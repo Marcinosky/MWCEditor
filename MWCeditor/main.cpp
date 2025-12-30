@@ -449,13 +449,13 @@ INT_PTR CALLBACK DlgProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lPar
 					CleanEmptyItems();
 					break;
 				}
-				case ID_TOOLS_MANAGEKEYS:
-				{
-					EnableWindow(hDialog, FALSE);
-					HWND hWnd = CreateDialog(hInst, MAKEINTRESOURCE(IDD_KEYS), hDialog, KeyManagerProc);
-					ShowWindow(hWnd, SW_SHOW);
-					break;
-				}
+				//case ID_TOOLS_MANAGEKEYS:
+				//{
+				//	EnableWindow(hDialog, FALSE);
+				//	HWND hWnd = CreateDialog(hInst, MAKEINTRESOURCE(IDD_KEYS), hDialog, KeyManagerProc);
+				//	ShowWindow(hWnd, SW_SHOW);
+				//	break;
+				//}
 				case ID_TOOLS_TIMEANDWEATHER:
 				{
 					EnableWindow(hDialog, FALSE);

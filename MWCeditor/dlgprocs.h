@@ -12,7 +12,7 @@ INT_PTR CALLBACK AboutProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lP
 INT_PTR CALLBACK TimeWeatherProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK HelpProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK ColorProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lParam);
-INT_PTR CALLBACK KeyManagerProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lParam);
+//INT_PTR CALLBACK KeyManagerProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK CompareProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK TeleportProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK SpawnItemProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lParam);
