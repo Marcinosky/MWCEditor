@@ -262,7 +262,7 @@ INT_PTR CALLBACK AboutProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lP
 			break;
 
 		case IDC_FEEDBACK:
-			ShellExecute(NULL, L"open", L"http://steamcommunity.com/app/516750/discussions/2/224446614463764765/", NULL, NULL, SW_SHOWDEFAULT);
+			ShellExecute(NULL, L"open", L"https://steamcommunity.com/app/4164420/discussions/0/694248809817155129/", NULL, NULL, SW_SHOWDEFAULT);
 			break;
 		}
 	}
@@ -1852,97 +1852,97 @@ INT_PTR CALLBACK KeyListProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM 
 	return TRUE;
 }
 
-INT_PTR CALLBACK KeyManagerProc(HWND hwnd, uint32_t message, WPARAM wParam, LPARAM lParam)
-{
-	static std::vector<std::wstring> KeyNames = { L"keyferndale", L"keygifu", L"keyhayosiko", L"keyhome", L"keyruscko", L"keysatsuma"};
-	static HWND hKeys;
-
-	switch (message)
-	{
-	case WM_INITDIALOG:
-	{
-		// Create child key list. We probably don't need a scrollbar here, ever - but it's better to be on the safe side
-		const int BorderMargin = 12;
-		RECT rekt;
-		GetClientRect(hwnd, &rekt);
-		const int ListWidth = rekt.right - rekt.left - 2 * BorderMargin;
-		const int ListHeight = rekt.bottom - rekt.top - 37 - 2 * BorderMargin;
-
-		hKeys = CreateDialog(hInst, MAKEINTRESOURCE(IDD_BLANK), hwnd, KeyListProc);
-		SetWindowPos(hKeys, NULL, BorderMargin, BorderMargin, ListWidth, ListHeight, SWP_SHOWWINDOW);
-		ShowWindow(hKeys, SW_SHOW);
-
-		TEXTMETRIC tm;
-		HDC hdc = GetDC(hwnd);
-		GetTextMetrics(hdc, &tm);
-		int yChar = tm.tmHeight + tm.tmExternalLeading;
-		int offset = 6;
-
-		// For every key we add a checkbox, if the coresponding location# was found
-		for (uint32_t index = 0; index < KeyNames.size(); index++)
-		{
-			uint32_t vIndex = FindVariable(KeyNames[index]);
-			if (vIndex < 0 )
-				continue;
-
-			HWND hCheckBox = CreateWindowEx(0, WC_BUTTON, KeyNames[index].substr(3).c_str(), BS_AUTOCHECKBOX | WS_CHILD | WS_VISIBLE, 6, 0 + offset, 150, yChar + 1, hKeys, (HMENU)IntToPtr(index), hInst, NULL);
-			SendMessage(hCheckBox, WM_SETFONT, (WPARAM)hListFont, TRUE);
-
-			const int KeyState = *reinterpret_cast<const int*>(variables[vIndex].value.data());
-
-			if (KeyState != 0)
-				CheckDlgButton(hKeys, index, BST_CHECKED);
-
-			offset += yChar;
-		}
-
-		// Apply size
-		PostMessage(hKeys, WM_UPDATESIZE, offset + 3, NULL);
-
-		// Invalidate and redraw to avoid transparency issues
-		GetClientRect(hKeys, &rekt);
-		InvalidateRect(hKeys, &rekt, TRUE);
-		RedrawWindow(hKeys, &rekt, NULL, RDW_ERASE | RDW_INVALIDATE);
-		break;
-	}
-	case WM_COMMAND:
-	{
-		if (HIWORD(wParam) == BN_CLICKED)
-		{
-			switch (LOWORD(wParam))
-			{
-			case IDC_APPLY:
-			{
-				for (uint32_t index = 0; index < KeyNames.size(); index++)
-				{
-					uint32_t vIndex = FindVariable(KeyNames[index]);
-					if (vIndex < 0)
-						continue;
-
-					const int KeyState = *reinterpret_cast<const int*>(variables[vIndex].value.data());
-
-					if (IsDlgButtonChecked(hKeys, index) == BST_CHECKED && KeyState == 0)
-						UpdateValue(std::to_wstring(1), vIndex);
-					else if (IsDlgButtonChecked(hKeys, index) == BST_UNCHECKED && KeyState == 1)
-						UpdateValue(std::to_wstring(0), vIndex);
-				}
-				// Leak into Discard to close the window
-			}
-			case IDC_DISCARD:
-			{
-				EndDialog(hwnd, 0);
-				DestroyWindow(hwnd);
-				EnableWindow(hDialog, TRUE);
-				break;
-			}
-			}
-		}
-	}
-	default:
-		return FALSE;
-	}
-	return TRUE;
-}
+//INT_PTR CALLBACK KeyManagerProc(HWND hwnd, uint32_t message, WPARAM wParam, LPARAM lParam)
+//{
+//	static std::vector<std::wstring> KeyNames = { L"keyferndale", L"keygifu", L"keyhayosiko", L"keyhome", L"keyruscko", L"keysatsuma"};
+//	static HWND hKeys;
+//
+//	switch (message)
+//	{
+//	case WM_INITDIALOG:
+//	{
+//		// Create child key list. We probably don't need a scrollbar here, ever - but it's better to be on the safe side
+//		const int BorderMargin = 12;
+//		RECT rekt;
+//		GetClientRect(hwnd, &rekt);
+//		const int ListWidth = rekt.right - rekt.left - 2 * BorderMargin;
+//		const int ListHeight = rekt.bottom - rekt.top - 37 - 2 * BorderMargin;
+//
+//		hKeys = CreateDialog(hInst, MAKEINTRESOURCE(IDD_BLANK), hwnd, KeyListProc);
+//		SetWindowPos(hKeys, NULL, BorderMargin, BorderMargin, ListWidth, ListHeight, SWP_SHOWWINDOW);
+//		ShowWindow(hKeys, SW_SHOW);
+//
+//		TEXTMETRIC tm;
+//		HDC hdc = GetDC(hwnd);
+//		GetTextMetrics(hdc, &tm);
+//		int yChar = tm.tmHeight + tm.tmExternalLeading;
+//		int offset = 6;
+//
+//		// For every key we add a checkbox, if the coresponding location# was found
+//		for (uint32_t index = 0; index < KeyNames.size(); index++)
+//		{
+//			uint32_t vIndex = FindVariable(KeyNames[index]);
+//			if (vIndex < 0 )
+//				continue;
+//
+//			HWND hCheckBox = CreateWindowEx(0, WC_BUTTON, KeyNames[index].substr(3).c_str(), BS_AUTOCHECKBOX | WS_CHILD | WS_VISIBLE, 6, 0 + offset, 150, yChar + 1, hKeys, (HMENU)IntToPtr(index), hInst, NULL);
+//			SendMessage(hCheckBox, WM_SETFONT, (WPARAM)hListFont, TRUE);
+//
+//			const int KeyState = *reinterpret_cast<const int*>(variables[vIndex].value.data());
+//
+//			if (KeyState != 0)
+//				CheckDlgButton(hKeys, index, BST_CHECKED);
+//
+//			offset += yChar;
+//		}
+//
+//		// Apply size
+//		PostMessage(hKeys, WM_UPDATESIZE, offset + 3, NULL);
+//
+//		// Invalidate and redraw to avoid transparency issues
+//		GetClientRect(hKeys, &rekt);
+//		InvalidateRect(hKeys, &rekt, TRUE);
+//		RedrawWindow(hKeys, &rekt, NULL, RDW_ERASE | RDW_INVALIDATE);
+//		break;
+//	}
+//	case WM_COMMAND:
+//	{
+//		if (HIWORD(wParam) == BN_CLICKED)
+//		{
+//			switch (LOWORD(wParam))
+//			{
+//			case IDC_APPLY:
+//			{
+//				for (uint32_t index = 0; index < KeyNames.size(); index++)
+//				{
+//					uint32_t vIndex = FindVariable(KeyNames[index]);
+//					if (vIndex < 0)
+//						continue;
+//
+//					const int KeyState = *reinterpret_cast<const int*>(variables[vIndex].value.data());
+//
+//					if (IsDlgButtonChecked(hKeys, index) == BST_CHECKED && KeyState == 0)
+//						UpdateValue(std::to_wstring(1), vIndex);
+//					else if (IsDlgButtonChecked(hKeys, index) == BST_UNCHECKED && KeyState == 1)
+//						UpdateValue(std::to_wstring(0), vIndex);
+//				}
+//				// Leak into Discard to close the window
+//			}
+//			case IDC_DISCARD:
+//			{
+//				EndDialog(hwnd, 0);
+//				DestroyWindow(hwnd);
+//				EnableWindow(hDialog, TRUE);
+//				break;
+//			}
+//			}
+//		}
+//	}
+//	default:
+//		return FALSE;
+//	}
+//	return TRUE;
+//}
 
 INT_PTR CALLBACK IssueProc(HWND hwnd, uint32_t message, WPARAM wParam, LPARAM lParam)
 {

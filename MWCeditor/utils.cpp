@@ -1758,10 +1758,11 @@ bool SaveHasIssues(std::vector<Issue> &issues)
 	if (iTime >= 0)
 	{
 		int time = *reinterpret_cast<const int*>(variables[iTime].value.data());
-		if (time < 0 || time > 22)
-			issues.push_back(Issue(iTime, IntToBin(time <= 0 ? 0 : time >= 22 ? 22 : time)));
-		else if (time % 2 != 0)
-			issues.push_back(Issue(iTime, IntToBin(time + 1)));
+		if (time < 0 || time > 23)
+			issues.push_back(Issue(
+				iTime,
+				IntToBin(time < 0 ? 0 : 23)
+			));
 	}
 	const int iDay = FindVariable(L"worldday");
 	if (iDay >= 0)
