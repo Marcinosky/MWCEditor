@@ -1728,22 +1728,24 @@ bool SaveHasIssues(std::vector<Issue> &issues)
 {
 	for (auto& carpart : carparts)
 	{
-		bool installed = false;
+		uint32_t aid = 0;
 
 		if (carpart.iInstalled != UINT_MAX)
 		{
 			const std::string& v = variables[carpart.iInstalled].value;
 
-			// Installed if:
-			// - MSC: "true"
-			// - MWC: binary AID >= 1 (non-empty, first byte >= 1)
-			installed =
-				!v.empty() &&
-				(
-					v == "true" ||
-					static_cast<unsigned char>(v[0]) >= 1
-					);
+			if (!v.empty())
+			{
+				// Installed if:
+				// - MSC: "true"
+				// - MWC: binary AID >= 1 (non-empty, first byte >= 1)
+				if (v == "true")
+					aid = 1;
+				else if (v != "false")
+					aid = static_cast<unsigned char>(v[0]);
+			}
 		}
+		bool installed = aid >= 1;
 
 		if (
 			(!installed) ||
@@ -1843,7 +1845,7 @@ void PopulateCarparts()
 		uint32_t i;
 		for (i = varindex; i < variables.size() && variables[i].group == group; i++)
 		{
-			std::size_t index_found = variables[i].key.find(partIdentifiers[3]); // Contains installed?
+			std::size_t index_found = variables[i].key.find(partIdentifiers[3]); // Contains AID?
 			if (index_found != std::wstring::npos)
 				prefix = variables[i].key.substr(0, index_found);
 			else
@@ -1933,6 +1935,19 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 	std::wstring stuckStr = BListSymbols[0];
 	std::wstring boltStr = BListSymbols[0];
 	LVITEM lvi;
+	uint32_t aid = 0;
+	if (part->iInstalled != UINT_MAX)
+	{
+		const std::string& installedVal = variables[part->iInstalled].value;
+		if (!installedVal.empty())
+		{
+			if (installedVal == "true")
+				aid = 1;
+			else if (installedVal != "false")
+				aid = static_cast<unsigned char>(installedVal[0]);
+		}
+	}
+	bool installed = aid >= 1;
 
 	if (part->iBolts != UINT_MAX && part->iTightness != UINT_MAX)
 	{
@@ -1950,10 +1965,7 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 			ov->numMaxBolts += maxbolts;
 			ov->numBolts += bolts;
 
-			bool invalid = (part->iInstalled == UINT_MAX);
-			if (!invalid)
-				invalid = (variables[part->iInstalled].value[0] == 0x01);
-			if (invalid && !(part->iCorner != UINT_MAX && variables[part->iCorner].value.size() == 1))
+			if (installed && !(part->iCorner != UINT_MAX && variables[part->iCorner].value.size() == 1))
 			{
 				ov->numLooseBolts += maxbolts - bolts;
 
@@ -1986,19 +1998,13 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 	}
 	else
 	{
-		bool invalid = (part->iInstalled == UINT_MAX);
-		if (!invalid)
-			invalid = (variables[part->iInstalled].value[0] == 0x01);
-		if (invalid)
+		if (installed)
 			ov->numFixed++;
 	}
 
 	ov->numParts++;
 
-	bool invalid = (part->iInstalled == UINT_MAX);
-	if (!invalid)
-		invalid = (variables[part->iInstalled].value[0] == 0x01);
-	if (invalid && !(part->iCorner != UINT_MAX && variables[part->iCorner].value.size() == 1))
+	if (installed && !(part->iCorner != UINT_MAX && variables[part->iCorner].value.size() == 1))
 		ov->numInstalled++;
 
 
@@ -2021,7 +2027,7 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 	if (part->iCorner != UINT_MAX)
 		installedStr = variables[part->iCorner].value.size() > 1 ? BListSymbols[1] : BListSymbols[0];
 	else
-		installedStr = part->iInstalled != UINT_MAX ? ((variables[part->iInstalled].value[0] == 0x01) ? BListSymbols[1] : BListSymbols[0]) : BListSymbols[2];
+		installedStr = part->iInstalled != UINT_MAX ? (installed ? BListSymbols[1] : BListSymbols[0]) : BListSymbols[2];
 
 	lvi.iItem = item; lvi.iSubItem = 3; lvi.pszText = (LPWSTR)installedStr.c_str();
 	SendMessage(hList3, LVM_SETITEM, 0, (LPARAM)&lvi);
@@ -2393,7 +2399,7 @@ void BatchProcessUninstall()
 	{
 		if (carparts[i].iInstalled != UINT_MAX)
 		{
-			UpdateValue(bools[0], carparts[i].iInstalled);
+			UpdateValue(L"0", carparts[i].iInstalled);
 		}
 
 		if (carparts[i].iBolted != UINT_MAX)
@@ -2473,12 +2479,19 @@ void BatchProcessDamage(bool all)
 	{
 		if (carparts[i].iDamaged != UINT_MAX)
 		{
-			bool invalid = (carparts[i].iInstalled == UINT_MAX);
-			if (!invalid)
+			uint32_t aid = 0;
+			if (carparts[i].iInstalled != UINT_MAX)
 			{
-				invalid = (variables[carparts[i].iInstalled].value[0] == 0x01);
+				const std::string& installedVal = variables[carparts[i].iInstalled].value;
+				if (!installedVal.empty())
+				{
+					if (installedVal == "true")
+						aid = 1;
+					else if (installedVal != "false")
+						aid = static_cast<unsigned char>(installedVal[0]);
+				}
 			}
-			if (invalid || all)
+			if (aid >= 1 || all)
 			{
 				if (variables[carparts[i].iDamaged].value[0] == 0x01)
 					UpdateValue(bools[0], carparts[i].iDamaged);
@@ -2493,11 +2506,20 @@ void BatchProcessBolts(bool fix)
 	{
 		if (carparts[i].iTightness != UINT_MAX && carparts[i].iBolts != UINT_MAX)
 		{
-			bool invalid = carparts[i].iInstalled == UINT_MAX;
-			if (!invalid)
-				invalid = (variables[carparts[i].iInstalled].value[0] == 0x01);
+			uint32_t aid = 0;
+			if (carparts[i].iInstalled != UINT_MAX)
+			{
+				const std::string& installedVal = variables[carparts[i].iInstalled].value;
+				if (!installedVal.empty())
+				{
+					if (installedVal == "true")
+						aid = 1;
+					else if (installedVal != "false")
+						aid = static_cast<unsigned char>(installedVal[0]);
+				}
+			}
 
-			if ((invalid && !(carparts[i].iCorner != UINT_MAX && variables[carparts[i].iCorner].value.size() == 1)) || !fix)
+			if ((aid >= 1 && !(carparts[i].iCorner != UINT_MAX && variables[carparts[i].iCorner].value.size() == 1)) || !fix)
 			{
 				uint32_t bolts = 0, maxbolts = 0;
 				std::vector<uint32_t> boltlist;
@@ -2556,9 +2578,22 @@ void BatchProcessWiring()
 	{
 		if (StartsWithStr(carparts[i].name, WiringIdentifier))
 		{
-			if (carparts[i].iInstalled != UINT_MAX && !static_cast<bool>(variables[carparts[i].iInstalled].value[0]))
+			uint32_t aid = 0;
+			if (carparts[i].iInstalled != UINT_MAX)
 			{
-				UpdateValue(bools[TRUE], carparts[i].iInstalled);
+				const std::string& installedVal = variables[carparts[i].iInstalled].value;
+				if (!installedVal.empty())
+				{
+					if (installedVal == "true")
+						aid = 1;
+					else if (installedVal != "false")
+						aid = static_cast<unsigned char>(installedVal[0]);
+				}
+			}
+
+			if (carparts[i].iInstalled != UINT_MAX && aid == 0)
+			{
+				UpdateValue(L"1", carparts[i].iInstalled);
 				InstalledParts.push_back(i);
 			}
 				
