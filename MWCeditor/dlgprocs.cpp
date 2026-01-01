@@ -897,9 +897,21 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 					{
 						for (uint32_t k = 0; k < carparts.size(); k++)
 						{
-							if (StartsWithStr(variables[i].key, carparts[k].name) && carparts[k].iInstalled != UINT_MAX)
+							if (StartsWithStr(variables[i].key, carparts[k].name) &&
+								carparts[k].iInstalled != UINT_MAX)
 							{
-								bRelevant = variables[carparts[k].iInstalled].value.c_str()[0];
+								const std::string& v = variables[carparts[k].iInstalled].value;
+
+								// Relevant if installed:
+								// - MSC: "true"
+								// - MWC: AID >= 1 (binary)
+								bRelevant =
+									!v.empty() &&
+									(
+										v == "true" ||
+										static_cast<unsigned char>(v[0]) >= 1
+										);
+
 								break;
 							}
 						}
@@ -940,7 +952,15 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 					if (StartsWithStr(variables[i].key, carparts[j].name))
 					{
 						// If the part has installed key, and is installed, we consider it as installed
-						if (bIsInstalled = carparts[j].iInstalled != UINT_MAX && variables[carparts[j].iInstalled].value.c_str()[0])
+						if (
+							bIsInstalled =
+							carparts[j].iInstalled != UINT_MAX &&
+							!variables[carparts[j].iInstalled].value.empty() &&
+							(
+								variables[carparts[j].iInstalled].value == "true" ||
+								static_cast<unsigned char>(variables[carparts[j].iInstalled].value[0]) >= 1
+								)
+							)
 							break;
 
 						// If the wheel has corner key, and is not empty, we consider it as installed

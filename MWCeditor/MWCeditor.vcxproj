@@ -284,6 +284,9 @@
     <!--<Image Include="MapAsset\map_dxt.jpg" />-->
     <Image Include="mwce.ico" />
   </ItemGroup>
+  <ItemGroup>
+	<None Include="mwce.ini" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

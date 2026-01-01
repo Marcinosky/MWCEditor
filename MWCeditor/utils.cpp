@@ -1726,31 +1726,66 @@ int GetScrollbarPos(HWND hwnd, int bar, uint32_t code)
 
 bool SaveHasIssues(std::vector<Issue> &issues)
 {
-	for (auto &carpart : carparts)
+	for (auto& carpart : carparts)
 	{
-		if ((carpart.iInstalled != UINT_MAX && !variables[carpart.iInstalled].value[0]) || 
-			(carpart.iCorner != UINT_MAX && variables[carpart.iCorner].value.size() == 1))
-		{
-			if (carpart.iBolted != UINT_MAX && variables[carpart.iBolted].value[0])
-				issues.push_back(Issue(carpart.iBolted, std::string(1, '\0')));
+		bool installed = false;
 
-			if (carpart.iTightness != UINT_MAX && *reinterpret_cast<const int*>(variables[carpart.iTightness].value.data()) != 0)
+		if (carpart.iInstalled != UINT_MAX)
+		{
+			const std::string& v = variables[carpart.iInstalled].value;
+
+			// Installed if:
+			// - MSC: "true"
+			// - MWC: binary AID >= 1 (non-empty, first byte >= 1)
+			installed =
+				!v.empty() &&
+				(
+					v == "true" ||
+					static_cast<unsigned char>(v[0]) >= 1
+					);
+		}
+
+		if (
+			(!installed) ||
+			(carpart.iCorner != UINT_MAX && variables[carpart.iCorner].value.size() == 1)
+			)
+		{
+			if (carpart.iBolted != UINT_MAX &&
+				!variables[carpart.iBolted].value.empty() &&
+				variables[carpart.iBolted].value[0])
+			{
+				issues.push_back(Issue(carpart.iBolted, std::string(1, '\0')));
+			}
+
+			if (carpart.iTightness != UINT_MAX &&
+				variables[carpart.iTightness].value.size() >= sizeof(int) &&
+				*reinterpret_cast<const int*>(variables[carpart.iTightness].value.data()) != 0)
+			{
 				issues.push_back(Issue(carpart.iTightness, IntToBin(0)));
+			}
 
 			if (carpart.iBolts != UINT_MAX)
 			{
 				uint32_t bolts = 0, maxbolts = 0;
 				std::vector<uint32_t> boltlist;
+
 				if (BinToBolts(variables[carpart.iBolts].value, bolts, maxbolts, boltlist) && bolts != 0)
-					issues.push_back(Issue(carpart.iBolts, BoltsToBin(std::vector<uint32_t>(maxbolts, 0))));
+					issues.push_back(Issue(
+						carpart.iBolts,
+						BoltsToBin(std::vector<uint32_t>(maxbolts, 0))
+					));
 			}
+
 			static const std::wstring PartStr = L"PART";
 			const int iTransform = FindVariable(carpart.name);
 			if (iTransform >= 0)
 			{
 				std::string value = variables[iTransform].value;
 				if (BinStrToWStr(value.substr(41)) != PartStr)
-					issues.push_back(Issue(iTransform, value.replace(41, value.size() - 41, WStrToBinStr(PartStr))));
+					issues.push_back(Issue(
+						iTransform,
+						value.replace(41, value.size() - 41, WStrToBinStr(PartStr))
+					));
 			}
 		}
 	}
@@ -3177,4 +3212,50 @@ ErrorCode ParseSavegame(std::wstring *differentfilepath, std::vector<Variable> *
 		}
 	}
 	return pvariables->empty() ? ErrorCode(34, -1) : ErrorCode(-1, -1);
+}
+
+void DumpParsedSavegame()
+{
+	if (variables.empty())
+	{
+		MessageBox(hDialog, L"No save file loaded to dump.", Title.c_str(), MB_OK | MB_ICONINFORMATION);
+		return;
+	}
+
+	SYSTEMTIME st;
+	GetLocalTime(&st);
+	std::wstring timestamp(32, '\0');
+	timestamp.resize(swprintf(&timestamp[0], timestamp.size(), L"%04d%02d%02d_%02d%02d%02d", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond));
+
+	std::wstring dumpname = timestamp + L"_" + (filename.empty() ? L"savefile" : filename) + L".dmp";
+
+	std::wstring dumppath = appfolderpath;
+	AppendPath(dumppath, dumpname.c_str());
+
+	std::wofstream dumpfile(dumppath.c_str(), std::ios::trunc);
+	if (!dumpfile.is_open())
+	{
+		MessageBox(hDialog, GLOB_STRS[30].c_str(), ErrorTitle.c_str(), MB_OK | MB_ICONERROR);
+		return;
+	}
+
+	dumpfile << L"Parsed save dump for \"" << filepath << L"\"" << std::endl;
+	dumpfile << L"Entries: " << variables.size() << std::endl << std::endl;
+
+	for (size_t i = 0; i < variables.size(); ++i)
+	{
+		const auto& variable = variables[i];
+		dumpfile << L"[" << i << L"] " << variable.raw_key << std::endl;
+		if (variable.raw_key != variable.key)
+			dumpfile << L"    Sanitized: " << variable.key << std::endl;
+		dumpfile << L"    Type: " << variable.GetTypeDisplayString() << std::endl;
+		dumpfile << L"    Value: " << variable.GetDisplayString() << std::endl << std::endl;
+	}
+
+	dumpfile.close();
+
+	LOG(L"Dumped parsed save to \"" + dumppath + L"\"\n");
+
+	std::wstring buffer = GLOB_STRS[40] + L"\n\n" + dumppath;
+	MessageBox(hDialog, buffer.c_str(), Title.c_str(), MB_OK | MB_ICONINFORMATION);
 }

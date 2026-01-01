@@ -405,6 +405,11 @@ INT_PTR CALLBACK DlgProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lPar
 					}
 					break;
 				}
+				case ID_TOOLS_DUMPPARSEDSAVE:
+				{
+					DumpParsedSavegame();
+					break;
+				}
 				case ID_TOOLS_COMPARE:
 				{
 					std::wstring fpath, fname;

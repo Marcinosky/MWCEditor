@@ -149,3 +149,4 @@ bool IsValidFloatStr(const std::wstring &str);
 uint32_t PopulateGroups(bool bRequiresSort, std::vector<Variable> *pvariables);
 std::wstring* SanitizeTagStr(std::wstring &str);
 std::pair<int, int64_t> ParseSavegame(std::wstring *differentfilepath = NULL, std::vector<Variable> *varlist = NULL);
+void DumpParsedSavegame();
