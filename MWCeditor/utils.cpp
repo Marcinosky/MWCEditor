@@ -1779,16 +1779,16 @@ bool SaveHasIssues(std::vector<Issue> &issues)
 			}
 
 			static const std::wstring PartStr = L"PART";
-			const int iTransform = FindVariable(carpart.name);
-			if (iTransform >= 0)
-			{
-				std::string value = variables[iTransform].value;
-				if (BinStrToWStr(value.substr(41)) != PartStr)
-					issues.push_back(Issue(
-						iTransform,
-						value.replace(41, value.size() - 41, WStrToBinStr(PartStr))
-					));
-			}
+		const int iTransform = FindVariable(carpart.name);
+		if (iTransform >= 0)
+		{
+			std::string value = variables[iTransform].value;
+			if (value.size() > 41 && BinStrToWStr(value.substr(41)) != PartStr)
+				issues.push_back(Issue(
+					iTransform,
+					value.replace(41, value.size() - 41, WStrToBinStr(PartStr))
+				));
+		}
 		}
 	}
 	const int iTime = FindVariable(L"worldtime");
