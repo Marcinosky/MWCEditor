@@ -1837,7 +1837,7 @@ void PopulateCarparts()
 	uint32_t numgroups = variables[variables.size() - 1].group;
 	uint32_t varindex = 0;
 
-	while (group < numgroups)
+	while (group < numgroups) // TODO: Check if this shouldn't be <=
 	{
 		std::wstring prefix;
 		uint32_t i;
