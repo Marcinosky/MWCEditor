@@ -3211,24 +3211,17 @@ std::wstring* SanitizeTagStr(std::wstring &str)
 }
 
 typedef std::pair<int, int64_t> ErrorCode;
-ErrorCode ParseSavegame(std::wstring *differentfilepath, std::vector<Variable> *varlist)
+ErrorCode ParseSavegame(std::wstring* differentfilepath, std::vector<Variable>* varlist)
 {
-	LARGE_INTEGER frequency;
-	LARGE_INTEGER start;
-	LARGE_INTEGER end;
-	if (dbglog) 
-	{
-		QueryPerformanceFrequency(&frequency);
-		QueryPerformanceCounter(&start);
-		LOG(L"\n");
-		LOG(L"Opening File \"" + (differentfilepath == NULL ? filepath : *differentfilepath) + L"\"\n");
-	}
-
 	using namespace std;
-	int64_t position;
+
+	int64_t position = 0;
 	uint32_t EmptyTagNum = 0;
-	ifstream iwc(differentfilepath == NULL ? filepath : *differentfilepath, ios::in | ios::binary);
-	std::vector<Variable> *pvariables = varlist ? varlist : &variables;
+
+	ifstream iwc(differentfilepath == NULL ? filepath : *differentfilepath,
+		ios::in | ios::binary);
+
+	vector<Variable>* pvariables = varlist ? varlist : &variables;
 
 	if (!iwc.is_open())
 		return ErrorCode(13, -1);
@@ -3236,104 +3229,85 @@ ErrorCode ParseSavegame(std::wstring *differentfilepath, std::vector<Variable> *
 	if (iwc.peek() != HX_STARTENTRY)
 		return ErrorCode(9, 0);
 
-	while (iwc.good())
+	while (iwc.peek() == HX_STARTENTRY)
 	{
 		position = iwc.tellg();
-		char c;
-		if (!iwc.get(c))
-			break;
 
-		if (c != HX_STARTENTRY)
-			return ErrorCode(9, position + iwc.gcount());
+		char c;
+		iwc.get(c);
+		if (!iwc || c != HX_STARTENTRY)
+			return ErrorCode(9, position);
 
 		position = iwc.tellg();
 		uint8_t TagSize = iwc.get();
 		if (!iwc)
-			return ErrorCode(43, position + iwc.gcount());
+			return ErrorCode(43, position);
 
 		position = iwc.tellg();
-		string TagStr = string(TagSize, '\0');
-		if (!iwc.read(&TagStr[0], TagSize))
-			return ErrorCode(43, position + iwc.gcount());
+		string TagStr(TagSize, '\0');
+		iwc.read(&TagStr[0], TagSize);
+		if (!iwc)
+			return ErrorCode(43, position);
 
 		wstring TagStrRaw = BinStrToWStr(TagStr, FALSE);
 
 		position = iwc.tellg();
-		string ValueSizeStr = string(4, '\0');
-		iwc.read(&ValueSizeStr[0], 4);
-		uint32_t ValueSize = *reinterpret_cast<uint32_t*>(&ValueSizeStr[0]);
-		if (!iwc || ValueSize < 6)
-			return ErrorCode(32, position + iwc.gcount());
+		uint32_t ValueSize = 0;
+		iwc.read(reinterpret_cast<char*>(&ValueSize), sizeof(ValueSize));
+		if (!iwc || ValueSize < 2)
+			return ErrorCode(32, position);
 
 		position = iwc.tellg();
-		string ValueStr = string(ValueSize, '\0');
-		iwc.read(&ValueStr[0], ValueSize);
-		if (!iwc || ValueStr[ValueSize - 1] != HX_ENDENTRY)
-			return ErrorCode(33, position + iwc.gcount());
+		string ValueBuf(ValueSize, '\0');
+		iwc.read(&ValueBuf[0], ValueSize);
+		if (!iwc)
+			return ErrorCode(33, position);
 
-		Header ValueHeader = Header(ValueStr, ValueSize);
+		if (ValueBuf.back() != HX_ENDENTRY)
+		{
+			// commenting this lets the program continue with the malformed entry
+			//return ErrorCode(33, position);
+		}
+		
+		uint32_t HeaderSize = 0;
+		Header ValueHeader(ValueBuf, HeaderSize);
 
-		if (ValueSize == UINT_MAX || ValueStr.size() - ValueSize - 1 == 0)
-			return ErrorCode(49, position + iwc.gcount());
-			
-		ValueStr = ValueStr.substr(ValueSize, ValueStr.size() - ValueSize - 1);
+		if (HeaderSize >= ValueBuf.size() - 1)
+			return ErrorCode(49, position);
 
-		// Entry read in successfully. Now we process
+		string ValueStr = ValueBuf.substr(
+			HeaderSize,
+			ValueBuf.size() - HeaderSize - 1
+		);
+
 		wstring TagStrFormatted = TagStrRaw;
 		if (TagStrFormatted.empty())
-			TagStrFormatted = L"untagged" + std::to_wstring(EmptyTagNum++);
+			TagStrFormatted = L"untagged" + to_wstring(EmptyTagNum++);
 		else
 			SanitizeTagStr(TagStrFormatted);
 
-		pvariables->push_back(Variable(ValueHeader, ValueStr, static_cast<uint32_t>(pvariables->size()), TagStrRaw, TagStrFormatted));
+		pvariables->emplace_back(
+			ValueHeader,
+			ValueStr,
+			static_cast<uint32_t>(pvariables->size()),
+			TagStrRaw,
+			TagStrFormatted
+		);
 	}
-	iwc.close();
-	std::sort(pvariables->begin(), pvariables->end(), [](const Variable &a, const Variable &b) -> bool { return a.key < b.key; } );
 
-	uint32_t NumGroups = UINT_MAX;
+	iwc.close();
+
+	sort(pvariables->begin(), pvariables->end(),
+		[](const Variable& a, const Variable& b) {
+			return a.key < b.key;
+		});
+
 	if (!varlist)
-		NumGroups = PopulateGroups(FALSE, pvariables);
-	
-	if (dbglog)
-	{
-		QueryPerformanceCounter(&end);
-		LOG(L"Parsing save-file took " + std::to_wstring((end.QuadPart - start.QuadPart) / static_cast<double>(frequency.QuadPart)) + L" seconds.\n");
-		LOG(L"Entries: " + std::to_wstring(pvariables->size()) + L", Groups: " + std::to_wstring(NumGroups + 1) + L"\n");
-		std::vector<int> numdts(EntryValue::Num, 0);
-		std::vector<std::pair<std::wstring, int>> numcts;
-		for (std::vector<Variable>::iterator it = pvariables->begin(); it != pvariables->end(); ++it)
-		{
-			if (!it->header.IsContainer())
-				numdts[it->header.GetValueType()]++;
-			else
-			{
-				bool bExists = FALSE;
-				for (auto &ct : numcts)
-				{
-					if (it->header.GetContainerDisplayString() == ct.first)
-					{
-						bExists = TRUE;
-						ct.second++;
-						break;
-					}
-				}
-				if (!bExists)
-					numcts.push_back(std::pair<std::wstring, int>(it->header.GetContainerDisplayString(), 1));
-			}
-		}
-		LOG(L"Data Types:\n");
-		for (uint32_t i = 0; i < numdts.size(); i++)
-		{
-			if (numdts[i] > 0)
-				LOG(L" - " + EntryValue::Ids[i].second + L": " + std::to_wstring(numdts[i]) + L"\n");
-		}
-		LOG(L"Container Types:\n");
-		for (uint32_t i = 0; i < numcts.size(); i++)
-		{
-			LOG(L" - " + numcts[i].first.substr(0, numcts[i].first.size() - 3) + L" : " + std::to_wstring(numcts[i].second) + L"\n");
-		}
-	}
-	return pvariables->empty() ? ErrorCode(34, -1) : ErrorCode(-1, -1);
+		PopulateGroups(FALSE, pvariables);
+
+	return pvariables->empty()
+		? ErrorCode(34, -1)
+		: ErrorCode(-1, -1);
 }
 
 void DumpParsedSavegame()
