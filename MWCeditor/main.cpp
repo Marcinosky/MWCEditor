@@ -189,7 +189,10 @@ INT_PTR CALLBACK DlgProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lPar
 
 						indextable.push_back(std::pair<uint32_t, uint32_t>(uindex, i));
 
-						lvi.iItem = item; lvi.iSubItem = 1; lvi.pszText = (LPWSTR)(bDisplayRawNames ? variables[i].raw_key : variables[i].key).c_str();
+						const bool hasAliasDisplay = !entries[group].display.empty() && entries[group].display != entries[group].key;
+						std::wstring displayName = (bDisplayRawNames && !hasAliasDisplay) ? variables[i].raw_key : GetGroupedDisplayName(variables[i], entries[group]);
+
+						lvi.iItem = item; lvi.iSubItem = 1; lvi.pszText = (LPWSTR)displayName.c_str();
 						SendMessage(hList2, LVM_SETITEM, 0, (LPARAM)&lvi);
 						item++;
 					}
@@ -405,6 +408,11 @@ INT_PTR CALLBACK DlgProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lPar
 					}
 					break;
 				}
+				case ID_TOOLS_DUMPPARSEDSAVE:
+				{
+					DumpParsedSavegame();
+					break;
+				}
 				case ID_TOOLS_COMPARE:
 				{
 					std::wstring fpath, fname;
@@ -449,13 +457,13 @@ INT_PTR CALLBACK DlgProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lPar
 					CleanEmptyItems();
 					break;
 				}
-				//case ID_TOOLS_MANAGEKEYS:
-				//{
-				//	EnableWindow(hDialog, FALSE);
-				//	HWND hWnd = CreateDialog(hInst, MAKEINTRESOURCE(IDD_KEYS), hDialog, KeyManagerProc);
-				//	ShowWindow(hWnd, SW_SHOW);
-				//	break;
-				//}
+				case ID_TOOLS_MANAGEKEYS:
+				{
+					EnableWindow(hDialog, FALSE);
+					HWND hWnd = CreateDialog(hInst, MAKEINTRESOURCE(IDD_KEYS), hDialog, KeyManagerProc);
+					ShowWindow(hWnd, SW_SHOW);
+					break;
+				}
 				case ID_TOOLS_TIMEANDWEATHER:
 				{
 					EnableWindow(hDialog, FALSE);

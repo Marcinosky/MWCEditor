@@ -12,6 +12,7 @@
 #include <io.h> // Console
 #include <fcntl.h> // Console
 #include <iostream> // Console
+#include <set>
 
 #ifdef _MAP
 #include "map.h"
@@ -863,6 +864,19 @@ void FillVector(const std::vector<std::wstring> &params, const std::wstring &ide
 				bStartWithMap = bSetting;
 		}
 	}
+	else if (identifier == L"Grouping_Aliases")
+	{
+		if (params.size() >= 2)
+		{
+			std::wstring sanitizedLookup = params[0];
+			std::wstring sanitizedGroupingKey = params.size() >= 3 ? params[2] : params[0];
+
+			SanitizeTagStr(sanitizedLookup);
+			SanitizeTagStr(sanitizedGroupingKey);
+
+			groupingAliases[sanitizedLookup] = GroupingAlias{ sanitizedGroupingKey, params[1] };
+		}
+	}
 }
 
 BOOL LoadDataFile(const std::wstring &datafilename)
@@ -871,6 +885,7 @@ BOOL LoadDataFile(const std::wstring &datafilename)
 
 	wstring strInput, identifier;
 	vector<wstring> params;
+	groupingAliases.clear();
 	wifstream inf(datafilename, wifstream::in);
 	if (!inf.is_open())
 		return 1;
@@ -1726,32 +1741,69 @@ int GetScrollbarPos(HWND hwnd, int bar, uint32_t code)
 
 bool SaveHasIssues(std::vector<Issue> &issues)
 {
-	for (auto &carpart : carparts)
+	for (auto& carpart : carparts)
 	{
-		if ((carpart.iInstalled != UINT_MAX && !variables[carpart.iInstalled].value[0]) || 
-			(carpart.iCorner != UINT_MAX && variables[carpart.iCorner].value.size() == 1))
-		{
-			if (carpart.iBolted != UINT_MAX && variables[carpart.iBolted].value[0])
-				issues.push_back(Issue(carpart.iBolted, std::string(1, '\0')));
+		uint32_t aid = 0;
 
-			if (carpart.iTightness != UINT_MAX && *reinterpret_cast<const int*>(variables[carpart.iTightness].value.data()) != 0)
+		if (carpart.iInstalled != UINT_MAX)
+		{
+			const std::string& v = variables[carpart.iInstalled].value;
+
+			if (!v.empty())
+			{
+				// Installed if:
+				// - MSC: "true"
+				// - MWC: binary AID >= 1 (non-empty, first byte >= 1)
+				if (v == "true")
+					aid = 1;
+				else if (v != "false")
+					aid = static_cast<unsigned char>(v[0]);
+			}
+		}
+		bool installed = aid >= 1;
+
+		if (
+			(!installed) ||
+			(carpart.iCorner != UINT_MAX && variables[carpart.iCorner].value.size() == 1)
+			)
+		{
+			if (carpart.iBolted != UINT_MAX &&
+				!variables[carpart.iBolted].value.empty() &&
+				variables[carpart.iBolted].value[0])
+			{
+				issues.push_back(Issue(carpart.iBolted, std::string(1, '\0')));
+			}
+
+			if (carpart.iTightness != UINT_MAX &&
+				variables[carpart.iTightness].value.size() >= sizeof(int) &&
+				*reinterpret_cast<const int*>(variables[carpart.iTightness].value.data()) != 0)
+			{
 				issues.push_back(Issue(carpart.iTightness, IntToBin(0)));
+			}
 
 			if (carpart.iBolts != UINT_MAX)
 			{
 				uint32_t bolts = 0, maxbolts = 0;
 				std::vector<uint32_t> boltlist;
+
 				if (BinToBolts(variables[carpart.iBolts].value, bolts, maxbolts, boltlist) && bolts != 0)
-					issues.push_back(Issue(carpart.iBolts, BoltsToBin(std::vector<uint32_t>(maxbolts, 0))));
+					issues.push_back(Issue(
+						carpart.iBolts,
+						BoltsToBin(std::vector<uint32_t>(maxbolts, 0))
+					));
 			}
+
 			static const std::wstring PartStr = L"PART";
-			const int iTransform = FindVariable(carpart.name);
-			if (iTransform >= 0)
-			{
-				std::string value = variables[iTransform].value;
-				if (BinStrToWStr(value.substr(41)) != PartStr)
-					issues.push_back(Issue(iTransform, value.replace(41, value.size() - 41, WStrToBinStr(PartStr))));
-			}
+		const int iTransform = FindVariable(carpart.name);
+		if (iTransform >= 0)
+		{
+			std::string value = variables[iTransform].value;
+			if (value.size() > 41 && BinStrToWStr(value.substr(41)) != PartStr)
+				issues.push_back(Issue(
+					iTransform,
+					value.replace(41, value.size() - 41, WStrToBinStr(PartStr))
+				));
+		}
 		}
 	}
 	const int iTime = FindVariable(L"worldtime");
@@ -1791,6 +1843,56 @@ inline bool PartIsStuck(std::wstring &stuckStr, const std::vector<uint32_t> &bol
 	return FALSE;
 }
 
+static uint32_t GetIndexForBase(const std::vector<uint32_t>& indices, const std::wstring& identifier, const std::wstring& base)
+{
+	const std::wstring normalizedBase = NormalizePartBase(base);
+	for (auto index : indices)
+	{
+		const std::wstring candidateBase = NormalizePartBase(ExtractBaseFromKey(variables[index].key, identifier));
+		if (candidateBase == normalizedBase)
+			return index;
+	}
+
+	return UINT_MAX;
+}
+
+using CarPartIdentifierBuckets = std::vector<std::vector<uint32_t>>;
+using CarPartResolverMap = std::map<std::wstring, CarPartIdentifierBuckets>;
+
+static CarPartResolverMap ResolveCarPartIndices()
+{
+	CarPartResolverMap carpartIndices;
+
+	for (uint32_t i = 0; i < variables.size(); i++)
+	{
+		const auto& key = variables[i].key;
+		for (size_t identifierIndex = 0; identifierIndex < partIdentifiers.size(); identifierIndex++)
+		{
+			const auto& identifier = partIdentifiers[identifierIndex];
+			if (identifier.empty() || key.size() <= identifier.size())
+				continue;
+
+			if (key.compare(key.size() - identifier.size(), identifier.size(), identifier) != 0)
+				continue;
+
+			const std::wstring base = ExtractBaseFromKey(key, identifier);
+			const std::wstring canonicalKey = NormalizePartBase(base);
+
+			auto& buckets = carpartIndices[canonicalKey];
+			if (buckets.empty())
+				buckets.resize(partIdentifiers.size());
+
+			buckets[identifierIndex].push_back(i);
+		}
+	}
+
+	for (auto& entry : carpartIndices)
+		for (auto& indices : entry.second)
+			std::sort(indices.begin(), indices.end());
+
+	return carpartIndices;
+}
+
 void PopulateCarparts()
 {
 	if (variables.empty() || partIdentifiers.empty())
@@ -1798,96 +1900,64 @@ void PopulateCarparts()
 
 	carparts.clear();
 
-	uint32_t group = 0;
-	uint32_t numgroups = variables[variables.size() - 1].group;
-	uint32_t varindex = 0;
+	CarPartResolverMap carpartIndexMap = ResolveCarPartIndices();
 
-	while (group < numgroups)
+	for (const auto& entry : carpartIndexMap)
 	{
-		std::wstring prefix;
-		uint32_t i;
-		for (i = varindex; i < variables.size() && variables[i].group == group; i++)
+		const std::wstring& canonicalKey = entry.first;
+		const auto& buckets = entry.second;
+
+		std::set<std::wstring> bases;
+		for (size_t identifierIndex = 0; identifierIndex < buckets.size(); identifierIndex++)
 		{
-			std::size_t index_found = variables[i].key.find(partIdentifiers[3]); // Contains installed?
-			if (index_found != std::wstring::npos)
-				prefix = variables[i].key.substr(0, index_found);
-			else
+			const auto& identifier = partIdentifiers[identifierIndex];
+			for (auto varIndex : buckets[identifierIndex])
 			{
-				index_found = variables[i].key.find(partIdentifiers[1]); // Contains bolts?
-				if (index_found != std::wstring::npos)
-				{
-					bool bValid = TRUE;
-					std::wstring bprefix = variables[i].key.substr(0, index_found);
-					std::wstring strInstalled = bprefix + partIdentifiers[3];
-					for (uint32_t j = varindex; j < variables.size() && variables[j].group == group; j++)
-					{
-						if (variables[j].key == strInstalled)
-						{
-							bValid = FALSE;
-							break;
-						}
-					}
-					if (bValid)
-						prefix = bprefix;
-				}
-			}
-			if (!prefix.empty())
-			{
-				//filter out special cases
-				bool valid = TRUE;
-				if (!partSCs.empty())
-				{
-					for (uint32_t j = 0; j < partSCs.size(); j++)
-					{
-						if (partSCs[j].id == 2)
-						{
-							if (partSCs[j].str == prefix)
-							{
-								valid = FALSE;
-								break;
-							}
-						}
-					}
-				}
-				if (valid)
-				{
-					CarPart part;
-
-					std::wstring _str1 = prefix + partIdentifiers[3];
-					std::wstring _str2 = prefix + partIdentifiers[1];
-					std::wstring _str3 = prefix + partIdentifiers[4];
-					std::wstring _str4 = prefix + partIdentifiers[2];
-					std::wstring _str5 = prefix + partIdentifiers[0];
-					std::wstring _str6 = prefix + partIdentifiers[5];
-
-					for (uint32_t j = varindex; j < variables.size() && variables[j].group == group; j++)
-					{
-						if (variables[j].key == _str1)
-							part.iInstalled = j;
-
-						else if (variables[j].key == _str2)
-							part.iBolts = j;
-
-						else if (variables[j].key == _str3)
-							part.iTightness = j;
-
-						else if (variables[j].key == _str4)
-							part.iDamaged = j;
-
-						else if (variables[j].key == _str5)
-							part.iBolted = j;
-
-						else if (variables[j].key == _str6)
-							part.iCorner = j;
-					}
-					part.name = prefix;
-					carparts.push_back(part);
-					prefix.clear();
-				}
+				bases.insert(ExtractBaseFromKey(variables[varIndex].key, identifier));
 			}
 		}
-		varindex = i;
-		group++;
+
+		for (const auto& base : bases)
+		{
+			bool valid = TRUE;
+			if (!partSCs.empty())
+			{
+				for (uint32_t j = 0; j < partSCs.size(); j++)
+				{
+					if (partSCs[j].id == 2 && (NormalizePartBase(partSCs[j].str) == canonicalKey || NormalizePartBase(partSCs[j].str) == NormalizePartBase(base)))
+					{
+						valid = FALSE;
+						break;
+					}
+				}
+			}
+			if (!valid)
+				continue;
+
+			CarPart part;
+			part.name = base;
+			const GroupingResolution resolution = ResolveGroupingKey(base, base, groupingAliases, GroupingIdentifierConfig());
+			part.matchedPrefix = resolution.matchedPrefix.empty() ? resolution.groupingKey : resolution.matchedPrefix;
+			std::wstring suffix = part.name;
+			if (!part.matchedPrefix.empty() && StartsWithStr(part.name, part.matchedPrefix))
+				suffix = part.name.substr(part.matchedPrefix.size());
+			part.displayName = (resolution.displayLabel.empty() ? base : resolution.displayLabel) + suffix;
+
+			if (buckets.size() > 0)
+				part.iBolted = GetIndexForBase(buckets[0], partIdentifiers[0], base);
+			if (buckets.size() > 1)
+				part.iBolts = GetIndexForBase(buckets[1], partIdentifiers[1], base);
+			if (buckets.size() > 2)
+				part.iDamaged = GetIndexForBase(buckets[2], partIdentifiers[2], base);
+			if (buckets.size() > 3)
+				part.iInstalled = GetIndexForBase(buckets[3], partIdentifiers[3], base);
+			if (buckets.size() > 4)
+				part.iTightness = GetIndexForBase(buckets[4], partIdentifiers[4], base);
+			if (buckets.size() > 5)
+				part.iCorner = GetIndexForBase(buckets[5], partIdentifiers[5], base);
+
+			carparts.push_back(part);
+		}
 	}
 }
 
@@ -1898,6 +1968,19 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 	std::wstring stuckStr = BListSymbols[0];
 	std::wstring boltStr = BListSymbols[0];
 	LVITEM lvi;
+	uint32_t aid = 0;
+	if (part->iInstalled != UINT_MAX)
+	{
+		const std::string& installedVal = variables[part->iInstalled].value;
+		if (!installedVal.empty())
+		{
+			if (installedVal == "true")
+				aid = 1;
+			else if (installedVal != "false")
+				aid = static_cast<unsigned char>(installedVal[0]);
+		}
+	}
+	bool installed = aid >= 1;
 
 	if (part->iBolts != UINT_MAX && part->iTightness != UINT_MAX)
 	{
@@ -1915,10 +1998,7 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 			ov->numMaxBolts += maxbolts;
 			ov->numBolts += bolts;
 
-			bool invalid = (part->iInstalled == UINT_MAX);
-			if (!invalid)
-				invalid = (variables[part->iInstalled].value[0] == 0x01);
-			if (invalid && !(part->iCorner != UINT_MAX && variables[part->iCorner].value.size() == 1))
+			if (installed && !(part->iCorner != UINT_MAX && variables[part->iCorner].value.size() == 1))
 			{
 				ov->numLooseBolts += maxbolts - bolts;
 
@@ -1951,19 +2031,13 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 	}
 	else
 	{
-		bool invalid = (part->iInstalled == UINT_MAX);
-		if (!invalid)
-			invalid = (variables[part->iInstalled].value[0] == 0x01);
-		if (invalid)
+		if (installed)
 			ov->numFixed++;
 	}
 
 	ov->numParts++;
 
-	bool invalid = (part->iInstalled == UINT_MAX);
-	if (!invalid)
-		invalid = (variables[part->iInstalled].value[0] == 0x01);
-	if (invalid && !(part->iCorner != UINT_MAX && variables[part->iCorner].value.size() == 1))
+	if (installed && !(part->iCorner != UINT_MAX && variables[part->iCorner].value.size() == 1))
 		ov->numInstalled++;
 
 
@@ -1972,7 +2046,7 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 			ov->numDamaged++;
 
 	lvi.mask = LVIF_TEXT | LVIF_STATE | LVIF_PARAM; lvi.state = 0; lvi.stateMask = 0;
-	lvi.iItem = item; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)part->name.c_str(), lvi.lParam = item;
+	lvi.iItem = item; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)(part->displayName.empty() ? part->name.c_str() : part->displayName.c_str()); lvi.lParam = item;
 	SendMessage(hList3, LVM_INSERTITEM, 0, (LPARAM)&lvi);
 
 	lvi.mask = LVIF_TEXT | LVIF_STATE; lvi.state = 0; lvi.stateMask = 0;
@@ -1986,7 +2060,7 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 	if (part->iCorner != UINT_MAX)
 		installedStr = variables[part->iCorner].value.size() > 1 ? BListSymbols[1] : BListSymbols[0];
 	else
-		installedStr = part->iInstalled != UINT_MAX ? ((variables[part->iInstalled].value[0] == 0x01) ? BListSymbols[1] : BListSymbols[0]) : BListSymbols[2];
+		installedStr = part->iInstalled != UINT_MAX ? (installed ? BListSymbols[1] : BListSymbols[0]) : BListSymbols[2];
 
 	lvi.iItem = item; lvi.iSubItem = 3; lvi.pszText = (LPWSTR)installedStr.c_str();
 	SendMessage(hList3, LVM_SETITEM, 0, (LPARAM)&lvi);
@@ -2178,7 +2252,7 @@ void UpdateList(const std::wstring &str)
 			}
 
 			lvi.mask = LVIF_TEXT | LVIF_STATE | LVIF_PARAM; lvi.state = 0; lvi.stateMask = 0;
-			lvi.iItem = i; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)entries[i].c_str(); lvi.lParam = (LPARAM)param;
+			lvi.iItem = i; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)entries[i].display.c_str(); lvi.lParam = (LPARAM)param;
 			SendMessage(hList, LVM_INSERTITEM, 0, (LPARAM)&lvi);
 		}
 	}
@@ -2189,7 +2263,8 @@ void UpdateList(const std::wstring &str)
 
 		for (uint32_t i = 0; i < variables.size(); i++)
 		{
-			if (ContainsStr(variables[i].key, str))
+			const GroupingEntry& groupEntry = entries[variables[i].group];
+			if (ContainsStr(variables[i].key, str) || ContainsStr(groupEntry.display, str) || ContainsStr(groupEntry.key, str))
 			{
 				if (index == 0)
 				{
@@ -2224,7 +2299,7 @@ void UpdateList(const std::wstring &str)
 				}
 			}
 			lvi.mask = LVIF_TEXT | LVIF_STATE | LVIF_PARAM; lvi.state = 0; lvi.stateMask = 0;
-			lvi.iItem = i; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)entries[indizes[i]].c_str(); lvi.lParam = (LPARAM)param;
+			lvi.iItem = i; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)entries[indizes[i]].display.c_str(); lvi.lParam = (LPARAM)param;
 			SendMessage(hList, LVM_INSERTITEM, 0, (LPARAM)&lvi);
 		}
 
@@ -2358,7 +2433,7 @@ void BatchProcessUninstall()
 	{
 		if (carparts[i].iInstalled != UINT_MAX)
 		{
-			UpdateValue(bools[0], carparts[i].iInstalled);
+			UpdateValue(L"0", carparts[i].iInstalled);
 		}
 
 		if (carparts[i].iBolted != UINT_MAX)
@@ -2438,12 +2513,19 @@ void BatchProcessDamage(bool all)
 	{
 		if (carparts[i].iDamaged != UINT_MAX)
 		{
-			bool invalid = (carparts[i].iInstalled == UINT_MAX);
-			if (!invalid)
+			uint32_t aid = 0;
+			if (carparts[i].iInstalled != UINT_MAX)
 			{
-				invalid = (variables[carparts[i].iInstalled].value[0] == 0x01);
+				const std::string& installedVal = variables[carparts[i].iInstalled].value;
+				if (!installedVal.empty())
+				{
+					if (installedVal == "true")
+						aid = 1;
+					else if (installedVal != "false")
+						aid = static_cast<unsigned char>(installedVal[0]);
+				}
 			}
-			if (invalid || all)
+			if (aid >= 1 || all)
 			{
 				if (variables[carparts[i].iDamaged].value[0] == 0x01)
 					UpdateValue(bools[0], carparts[i].iDamaged);
@@ -2458,11 +2540,20 @@ void BatchProcessBolts(bool fix)
 	{
 		if (carparts[i].iTightness != UINT_MAX && carparts[i].iBolts != UINT_MAX)
 		{
-			bool invalid = carparts[i].iInstalled == UINT_MAX;
-			if (!invalid)
-				invalid = (variables[carparts[i].iInstalled].value[0] == 0x01);
+			uint32_t aid = 0;
+			if (carparts[i].iInstalled != UINT_MAX)
+			{
+				const std::string& installedVal = variables[carparts[i].iInstalled].value;
+				if (!installedVal.empty())
+				{
+					if (installedVal == "true")
+						aid = 1;
+					else if (installedVal != "false")
+						aid = static_cast<unsigned char>(installedVal[0]);
+				}
+			}
 
-			if ((invalid && !(carparts[i].iCorner != UINT_MAX && variables[carparts[i].iCorner].value.size() == 1)) || !fix)
+			if ((aid >= 1 && !(carparts[i].iCorner != UINT_MAX && variables[carparts[i].iCorner].value.size() == 1)) || !fix)
 			{
 				uint32_t bolts = 0, maxbolts = 0;
 				std::vector<uint32_t> boltlist;
@@ -2521,9 +2612,22 @@ void BatchProcessWiring()
 	{
 		if (StartsWithStr(carparts[i].name, WiringIdentifier))
 		{
-			if (carparts[i].iInstalled != UINT_MAX && !static_cast<bool>(variables[carparts[i].iInstalled].value[0]))
+			uint32_t aid = 0;
+			if (carparts[i].iInstalled != UINT_MAX)
 			{
-				UpdateValue(bools[TRUE], carparts[i].iInstalled);
+				const std::string& installedVal = variables[carparts[i].iInstalled].value;
+				if (!installedVal.empty())
+				{
+					if (installedVal == "true")
+						aid = 1;
+					else if (installedVal != "false")
+						aid = static_cast<unsigned char>(installedVal[0]);
+				}
+			}
+
+			if (carparts[i].iInstalled != UINT_MAX && aid == 0)
+			{
+				UpdateValue(L"1", carparts[i].iInstalled);
 				InstalledParts.push_back(i);
 			}
 				
@@ -2599,6 +2703,22 @@ std::string BoltsToBin(std::vector<uint32_t> &bolts)
 // Really slow because of vector? Should maybe refactor?
 int Variables_add(Variable var)
 {
+	const bool isItemFile = IsItemFile();
+	std::vector<Item> sortedItemTypes;
+	GroupingIdentifierConfig identifierConfig;
+	if (isItemFile)
+	{
+		sortedItemTypes = itemTypes;
+		std::sort(sortedItemTypes.begin(), sortedItemTypes.end(), [](const Item& a, const Item& b) -> bool { return a.GetName().size() > b.GetName().size(); });
+		identifierConfig.isItemFile = true;
+		identifierConfig.sortedItemTypes = &sortedItemTypes;
+	}
+
+	const GroupingResolution resolution = ResolveGroupingKey(var.raw_key, var.key, groupingAliases, identifierConfig);
+	const std::wstring groupingKey = resolution.groupingKey.empty() ? var.key : resolution.groupingKey;
+	const std::wstring displayLabel = resolution.displayLabel.empty() ? groupingKey : resolution.displayLabel;
+	const std::wstring matchedPrefix = resolution.matchedPrefix.empty() ? groupingKey : resolution.matchedPrefix;
+
 	uint32_t index = 0;
 	uint32_t group = UINT_MAX;
 	for (index; index < variables.size(); index++)
@@ -2613,7 +2733,7 @@ int Variables_add(Variable var)
 		if (n < 0) n = 0;
 		if (static_cast<uint32_t>(n) >= static_cast<uint32_t>(variables.size())) 
 			n = static_cast<uint32_t>(variables.size()) - 1;
-		if (ContainsStr(var.key, entries[variables[n].group]))
+		if (ContainsStr(var.key, entries[variables[n].group].key))
 			group = variables[n].group;
 	}
 	if (group == UINT_MAX)
@@ -2627,7 +2747,7 @@ int Variables_add(Variable var)
 		{
 			variables[i].group += 1;
 		}
-		entries.insert((entries.begin() + group), var.key); // slow af lol
+		entries.insert((entries.begin() + group), GroupingEntry{ groupingKey, displayLabel, resolution.ruleSource, matchedPrefix }); // slow af lol
 	}
 		
 	var.group = group;
@@ -2923,19 +3043,6 @@ BOOL FindVariable(const std::wstring &str, const bool bConvert2Lower)
 	return -1;
 }
 
-std::wstring GetItemPrefix(const std::wstring& VariableKey, const std::vector<Item>* SortedItemTypes)
-{
-	for (auto& item : *SortedItemTypes)
-	{
-		std::wstring name = *SanitizeTagStr(item.GetName());
-		if (VariableKey.substr(0, name.size()) == name)
-			for (auto i = static_cast<uint32_t>(name.size()); i < VariableKey.size(); i++)
-				if (!isdigit(VariableKey[i]))
-					return VariableKey.substr(0, i);
-	}
-	return std::wstring();
-}
-
 // This function is responsible of pooling variables into groups. Variables of the same group will be shown in the list on the right when selected
 // Called after parsing the file, and also when we need to resort the list after variabels have been renamed (e.g. CLeanItems)
 uint32_t PopulateGroups(bool bRequiresSort,  std::vector<Variable> *pvariables)
@@ -2945,8 +3052,9 @@ uint32_t PopulateGroups(bool bRequiresSort,  std::vector<Variable> *pvariables)
 
 	uint32_t group = UINT_MAX;
 	bool bIsItemFile = IsItemFile();
-	std::wstring previous_extract(1, '\0');
+	std::wstring previous_extract;
 	std::vector<Item> sortedItemTypes;
+	GroupingIdentifierConfig identifierConfig;
 	entries.clear();
 
 	if (bIsItemFile)
@@ -2954,17 +3062,23 @@ uint32_t PopulateGroups(bool bRequiresSort,  std::vector<Variable> *pvariables)
 		// we sort by longest itemnames here to avoid substring issues when grouping
 		sortedItemTypes = itemTypes;
 		std::sort(sortedItemTypes.begin(), sortedItemTypes.end(), [](const Item &a, const Item &b) -> bool { return a.GetName().size() > b.GetName().size(); });
+		identifierConfig.isItemFile = true;
+		identifierConfig.sortedItemTypes = &sortedItemTypes;
 	}
 
 	for (uint32_t i = 0; i < pvariables->size(); i++)
 	{
-		if (pvariables->at(i).key.substr(0, previous_extract.length()) != previous_extract)
+		const GroupingResolution resolution = ResolveGroupingKey(pvariables->at(i).raw_key, pvariables->at(i).key, groupingAliases, identifierConfig);
+		const std::wstring groupingKey = resolution.groupingKey.empty() ? pvariables->at(i).key : resolution.groupingKey;
+		const std::wstring displayLabel = resolution.displayLabel.empty() ? groupingKey : resolution.displayLabel;
+		const std::wstring matchedPrefix = resolution.matchedPrefix.empty() ? groupingKey : resolution.matchedPrefix;
+		const bool useStrictGrouping = resolution.ruleSource == L"alias" || resolution.ruleSource == L"item_prefix";
+
+		if (previous_extract.empty() || (useStrictGrouping ? groupingKey != previous_extract : !StartsWithStr(pvariables->at(i).key, previous_extract)))
 		{
 			group++;
-			previous_extract = bIsItemFile ? GetItemPrefix(pvariables->at(i).key, &sortedItemTypes) : pvariables->at(i).key;
-			if (bIsItemFile && previous_extract.empty())
-				previous_extract = pvariables->at(i).key;
-			entries.push_back(previous_extract);
+			previous_extract = useStrictGrouping ? groupingKey : matchedPrefix;
+			entries.push_back(GroupingEntry{ groupingKey, displayLabel, resolution.ruleSource, matchedPrefix });
 		}
 		pvariables->at(i).group = group;
 	}
@@ -3008,6 +3122,18 @@ bool StartsWithStr(const std::wstring &target, const std::wstring &str)
 			return TRUE;
 	}
 	return FALSE;
+}
+
+std::wstring GetGroupedDisplayName(const Variable& var, const GroupingEntry& entry)
+{
+	const std::wstring& sourceKey = var.key;
+	const std::wstring& prefix = entry.matchedPrefix.empty() ? entry.key : entry.matchedPrefix;
+	const std::wstring& baseDisplay = entry.display.empty() ? entry.key : entry.display;
+
+	if (!prefix.empty() && StartsWithStr(sourceKey, prefix))
+		return baseDisplay + sourceKey.substr(prefix.size());
+
+	return baseDisplay + sourceKey;
 }
 
 inline std::wstring ParseBracketStr(std::wstring &str, uint32_t i)
@@ -3177,4 +3303,50 @@ ErrorCode ParseSavegame(std::wstring *differentfilepath, std::vector<Variable> *
 		}
 	}
 	return pvariables->empty() ? ErrorCode(34, -1) : ErrorCode(-1, -1);
+}
+
+void DumpParsedSavegame()
+{
+	if (variables.empty())
+	{
+		MessageBox(hDialog, L"No save file loaded to dump.", Title.c_str(), MB_OK | MB_ICONINFORMATION);
+		return;
+	}
+
+	SYSTEMTIME st;
+	GetLocalTime(&st);
+	std::wstring timestamp(32, '\0');
+	timestamp.resize(swprintf(&timestamp[0], timestamp.size(), L"%04d%02d%02d_%02d%02d%02d", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond));
+
+	std::wstring dumpname = timestamp + L"_" + (filename.empty() ? L"savefile" : filename) + L".dmp";
+
+	std::wstring dumppath = appfolderpath;
+	AppendPath(dumppath, dumpname.c_str());
+
+	std::wofstream dumpfile(dumppath.c_str(), std::ios::trunc);
+	if (!dumpfile.is_open())
+	{
+		MessageBox(hDialog, GLOB_STRS[30].c_str(), ErrorTitle.c_str(), MB_OK | MB_ICONERROR);
+		return;
+	}
+
+	dumpfile << L"Parsed save dump for \"" << filepath << L"\"" << std::endl;
+	dumpfile << L"Entries: " << variables.size() << std::endl << std::endl;
+
+	for (size_t i = 0; i < variables.size(); ++i)
+	{
+		const auto& variable = variables[i];
+		dumpfile << L"[" << i << L"] " << variable.raw_key << std::endl;
+		if (variable.raw_key != variable.key)
+			dumpfile << L"    Sanitized: " << variable.key << std::endl;
+		dumpfile << L"    Type: " << variable.GetTypeDisplayString() << std::endl;
+		dumpfile << L"    Value: " << variable.GetDisplayString() << std::endl << std::endl;
+	}
+
+	dumpfile.close();
+
+	LOG(L"Dumped parsed save to \"" + dumppath + L"\"\n");
+
+	std::wstring buffer = GLOB_STRS[40] + L"\n\n" + dumppath;
+	MessageBox(hDialog, buffer.c_str(), Title.c_str(), MB_OK | MB_ICONINFORMATION);
 }

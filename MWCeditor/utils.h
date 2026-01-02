@@ -3,6 +3,7 @@
 #include <CommCtrl.h>
 #include <string>
 #include <vector>
+#include <map>
 #include <locale>
 #include <codecvt>
 #include "structs.h"
@@ -148,4 +149,6 @@ std::wstring BinToFloatVector(const std::string &value, int max, int start = 0);
 bool IsValidFloatStr(const std::wstring &str);
 uint32_t PopulateGroups(bool bRequiresSort, std::vector<Variable> *pvariables);
 std::wstring* SanitizeTagStr(std::wstring &str);
+std::wstring GetGroupedDisplayName(const Variable& var, const GroupingEntry& entry);
 std::pair<int, int64_t> ParseSavegame(std::wstring *differentfilepath = NULL, std::vector<Variable> *varlist = NULL);
+void DumpParsedSavegame();

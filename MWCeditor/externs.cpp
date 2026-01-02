@@ -6,7 +6,7 @@ int iItem;
 
 HWND hDialog, hEdit, hCEdit, hReport;
 HINSTANCE hInst;
-std::vector<std::wstring> entries;												// The "groups" of variables displayed on the left list
+std::vector<GroupingEntry> entries;												// The "groups" of variables displayed on the left list
 std::vector<Variable> variables;												// All variables read in from file, e.g. carjacktransform
 std::vector<std::pair<uint32_t, uint32_t>> indextable;							// Holds indices of the currently selected group
 std::vector<std::pair<std::pair<std::wstring, bool>, std::string>> locations;	// Holds all predefined locations, used by the teleport dialog and map. <<Name, IsMapRelevant>, Bin>
@@ -17,6 +17,7 @@ std::vector<SpecialCase> partSCs;												// Bolt report special cases
 std::vector<std::wstring> partIdentifiers;										// Properties of car parts. Used by the bolt report to detect parts properly
 std::vector<CarProperty> carproperties;											// Car properties with min and max values such as wear, fuel and other liquids
 std::vector<TimetableEntry> timetableEntries;									// Entry for the timetable inside the time and weather dialog
+std::map<std::wstring, GroupingAlias> groupingAliases;							// Grouping aliases used when creating display labels for the left list
 std::wstring filepath;															// Full file path of currently opened file
 std::wstring filename;															// Filename of currently opened file
 std::wstring appfolderpath;														// Path to the writable apps folder
