@@ -61,6 +61,7 @@ struct TimetableEntry
 struct CarPart
 {
 	std::wstring name = L"";
+	std::wstring displayName = L"";
 	uint32_t iInstalled = UINT_MAX;
 	uint32_t iBolts = UINT_MAX;
 	uint32_t iTightness = UINT_MAX;

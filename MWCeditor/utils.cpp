@@ -1936,6 +1936,8 @@ void PopulateCarparts()
 
 			CarPart part;
 			part.name = base;
+			const GroupingResolution resolution = ResolveGroupingKey(base, base, groupingAliases, GroupingIdentifierConfig());
+			part.displayName = resolution.displayLabel.empty() ? base : resolution.displayLabel;
 
 			if (buckets.size() > 0)
 				part.iBolted = GetIndexForBase(buckets[0], partIdentifiers[0], base);
@@ -2040,7 +2042,7 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 			ov->numDamaged++;
 
 	lvi.mask = LVIF_TEXT | LVIF_STATE | LVIF_PARAM; lvi.state = 0; lvi.stateMask = 0;
-	lvi.iItem = item; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)part->name.c_str(), lvi.lParam = item;
+	lvi.iItem = item; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)(part->displayName.empty() ? part->name.c_str() : part->displayName.c_str()); lvi.lParam = item;
 	SendMessage(hList3, LVM_INSERTITEM, 0, (LPARAM)&lvi);
 
 	lvi.mask = LVIF_TEXT | LVIF_STATE; lvi.state = 0; lvi.stateMask = 0;
