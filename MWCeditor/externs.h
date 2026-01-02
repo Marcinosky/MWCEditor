@@ -4,8 +4,10 @@
 #include <vector> 
 #include <string> 
 #include <tchar.h> 
+#include <map>
 #include "variable.h"
 #include "structs.h"
+#include "grouping.h"
 
 #include <iostream>
 #include <fstream>		// File stream input output
@@ -68,7 +70,7 @@ extern WNDPROC DefaultListCtrlProc, DefaultListViewProc;
 extern int iItem, iSubItem;
 extern HWND hDialog, hEdit, hCEdit, hReport;
 extern HINSTANCE hInst;
-extern std::vector<std::wstring> entries;
+extern std::vector<GroupingEntry> entries;
 extern std::vector<Variable> variables;
 extern std::vector<std::pair<uint32_t, uint32_t>> indextable;
 extern std::vector<std::pair<std::pair<std::wstring, bool>, std::string>> locations;
@@ -79,6 +81,7 @@ extern std::vector<SpecialCase> partSCs;
 extern std::vector<std::wstring> partIdentifiers;
 extern std::vector<CarProperty> carproperties;
 extern std::vector<TimetableEntry> timetableEntries;
+extern std::map<std::wstring, GroupingAlias> groupingAliases;
 extern std::wstring filepath;
 extern std::wstring filename;
 extern std::wstring appfolderpath;
