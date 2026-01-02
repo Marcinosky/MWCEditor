@@ -1937,7 +1937,11 @@ void PopulateCarparts()
 			CarPart part;
 			part.name = base;
 			const GroupingResolution resolution = ResolveGroupingKey(base, base, groupingAliases, GroupingIdentifierConfig());
-			part.displayName = resolution.displayLabel.empty() ? base : resolution.displayLabel;
+			part.matchedPrefix = resolution.matchedPrefix.empty() ? resolution.groupingKey : resolution.matchedPrefix;
+			std::wstring suffix = part.name;
+			if (!part.matchedPrefix.empty() && StartsWithStr(part.name, part.matchedPrefix))
+				suffix = part.name.substr(part.matchedPrefix.size());
+			part.displayName = (resolution.displayLabel.empty() ? base : resolution.displayLabel) + suffix;
 
 			if (buckets.size() > 0)
 				part.iBolted = GetIndexForBase(buckets[0], partIdentifiers[0], base);
