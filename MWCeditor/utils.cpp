@@ -14,6 +14,9 @@
 #include <iostream> // Console
 #include <set>
 
+#include <windows.h>
+#include <cstdio>
+
 #ifdef _MAP
 #include "map.h"
 #endif /*_MAP*/
@@ -919,17 +922,23 @@ BOOL LoadDataFile(const std::wstring &datafilename)
 				{
 					switch (FetchDataFileParameters(strInput.substr(offset), startpos, endpos))
 					{
-						case 0:
-							params.push_back(strInput.substr(startpos + offset, endpos - startpos));
-							offset += endpos + 1;
-							LineNotDone = !(offset >= strInput.size());
-							break;
-						case 1:
-							LineNotDone = false;
-							break;
-						case 2:
-							LinesLeft = false;
-							break;
+					case 0:
+					{
+						std::wstring token = strInput.substr(startpos + offset, endpos - startpos);
+						for (auto& ch : token)
+							if (ch == L'`')
+								ch = L'"';
+						params.push_back(std::move(token));
+						offset += endpos + 1;
+						LineNotDone = !(offset >= strInput.size());
+						break;
+					}
+					case 1:
+						LineNotDone = false;
+						break;
+					case 2:
+						LinesLeft = false;
+						break;
 					}
 				}
 				if (!params.empty())
@@ -3015,15 +3024,37 @@ uint32_t ParseItemID(const std::wstring &str, const uint32_t sIndex)
 	return ItemID == 0 ? UINT_MAX : ItemID;
 }
 
-BOOL FindVariable(const std::wstring &str, const bool bConvert2Lower)
+inline int CharBucket(wchar_t c)
 {
+	if (c >= L'a' && c <= L'z') return c - L'a';           // 0–25
+	if (c >= L'0' && c <= L'9') return 26 + (c - L'0');   // 26–35
+	if (c == L'"')              return 36;               // 36
+	return 37;                                          // other junk
+}
+
+BOOL FindVariable(const std::wstring& str, const bool bConvert2Lower)
+{
+
 	if (variables.empty())
 		return -1;
-	int it;
+
+	int it = 0;
 	std::wstring key = str;
+
 	if (bConvert2Lower)
 		transform(key.begin(), key.end(), key.begin(), ::tolower);
-	uint32_t startindex = static_cast<uint32_t>(((static_cast<float>(key[0]) - 97) / 25) * variables.size());
+
+	if (key.empty()) {
+		return -1;
+	}
+
+	int bucket = CharBucket(key[0]);
+
+	uint32_t startindex =
+		static_cast<uint32_t>(
+			(bucket / 38.0f) * variables.size()
+			);
+		
 	variables[startindex].key != key ? variables[startindex].key > key ? it = -1 : it = 1 : it = 0;
 	if (it != 0)
 	{
