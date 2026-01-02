@@ -3,6 +3,7 @@
 #include <CommCtrl.h>
 #include <string>
 #include <vector>
+#include <map>
 #include <locale>
 #include <codecvt>
 #include "structs.h"

@@ -12,6 +12,7 @@
 #include <io.h> // Console
 #include <fcntl.h> // Console
 #include <iostream> // Console
+#include <set>
 
 #ifdef _MAP
 #include "map.h"
@@ -1828,6 +1829,80 @@ inline bool PartIsStuck(std::wstring &stuckStr, const std::vector<uint32_t> &bol
 	return FALSE;
 }
 
+static std::wstring NormalizePartBase(const std::wstring& base)
+{
+	size_t digitOffset = base.size();
+	while (digitOffset > 0 && std::iswdigit(base[digitOffset - 1]))
+		--digitOffset;
+
+	if (digitOffset == base.size())
+		return base;
+
+	std::wstring normalizedDigits = base.substr(digitOffset);
+	size_t nonZeroOffset = normalizedDigits.find_first_not_of(L'0');
+	normalizedDigits = nonZeroOffset == std::wstring::npos ? L"0" : normalizedDigits.substr(nonZeroOffset);
+
+	return base.substr(0, digitOffset) + normalizedDigits;
+}
+
+static std::wstring ExtractBaseFromKey(const std::wstring& key, const std::wstring& identifier)
+{
+	if (key.size() < identifier.size())
+		return L"";
+
+	return key.substr(0, key.size() - identifier.size());
+}
+
+static uint32_t GetIndexForBase(const std::vector<uint32_t>& indices, const std::wstring& identifier, const std::wstring& base)
+{
+	const std::wstring normalizedBase = NormalizePartBase(base);
+	for (auto index : indices)
+	{
+		const std::wstring candidateBase = NormalizePartBase(ExtractBaseFromKey(variables[index].key, identifier));
+		if (candidateBase == normalizedBase)
+			return index;
+	}
+
+	return UINT_MAX;
+}
+
+using CarPartIdentifierBuckets = std::vector<std::vector<uint32_t>>;
+using CarPartResolverMap = std::map<std::wstring, CarPartIdentifierBuckets>;
+
+static CarPartResolverMap ResolveCarPartIndices()
+{
+	CarPartResolverMap carpartIndices;
+
+	for (uint32_t i = 0; i < variables.size(); i++)
+	{
+		const auto& key = variables[i].key;
+		for (size_t identifierIndex = 0; identifierIndex < partIdentifiers.size(); identifierIndex++)
+		{
+			const auto& identifier = partIdentifiers[identifierIndex];
+			if (identifier.empty() || key.size() <= identifier.size())
+				continue;
+
+			if (key.compare(key.size() - identifier.size(), identifier.size(), identifier) != 0)
+				continue;
+
+			const std::wstring base = ExtractBaseFromKey(key, identifier);
+			const std::wstring canonicalKey = NormalizePartBase(base);
+
+			auto& buckets = carpartIndices[canonicalKey];
+			if (buckets.empty())
+				buckets.resize(partIdentifiers.size());
+
+			buckets[identifierIndex].push_back(i);
+		}
+	}
+
+	for (auto& entry : carpartIndices)
+		for (auto& indices : entry.second)
+			std::sort(indices.begin(), indices.end());
+
+	return carpartIndices;
+}
+
 void PopulateCarparts()
 {
 	if (variables.empty() || partIdentifiers.empty())
@@ -1835,96 +1910,58 @@ void PopulateCarparts()
 
 	carparts.clear();
 
-	uint32_t group = 0;
-	uint32_t numgroups = variables[variables.size() - 1].group;
-	uint32_t varindex = 0;
+	CarPartResolverMap carpartIndexMap = ResolveCarPartIndices();
 
-	while (group < numgroups) // TODO: Check if this shouldn't be <=
+	for (const auto& entry : carpartIndexMap)
 	{
-		std::wstring prefix;
-		uint32_t i;
-		for (i = varindex; i < variables.size() && variables[i].group == group; i++)
+		const std::wstring& canonicalKey = entry.first;
+		const auto& buckets = entry.second;
+
+		std::set<std::wstring> bases;
+		for (size_t identifierIndex = 0; identifierIndex < buckets.size(); identifierIndex++)
 		{
-			std::size_t index_found = variables[i].key.find(partIdentifiers[3]); // Contains AID?
-			if (index_found != std::wstring::npos)
-				prefix = variables[i].key.substr(0, index_found);
-			else
+			const auto& identifier = partIdentifiers[identifierIndex];
+			for (auto varIndex : buckets[identifierIndex])
 			{
-				index_found = variables[i].key.find(partIdentifiers[1]); // Contains bolts?
-				if (index_found != std::wstring::npos)
-				{
-					bool bValid = TRUE;
-					std::wstring bprefix = variables[i].key.substr(0, index_found);
-					std::wstring strInstalled = bprefix + partIdentifiers[3];
-					for (uint32_t j = varindex; j < variables.size() && variables[j].group == group; j++)
-					{
-						if (variables[j].key == strInstalled)
-						{
-							bValid = FALSE;
-							break;
-						}
-					}
-					if (bValid)
-						prefix = bprefix;
-				}
-			}
-			if (!prefix.empty())
-			{
-				//filter out special cases
-				bool valid = TRUE;
-				if (!partSCs.empty())
-				{
-					for (uint32_t j = 0; j < partSCs.size(); j++)
-					{
-						if (partSCs[j].id == 2)
-						{
-							if (partSCs[j].str == prefix)
-							{
-								valid = FALSE;
-								break;
-							}
-						}
-					}
-				}
-				if (valid)
-				{
-					CarPart part;
-
-					std::wstring _str1 = prefix + partIdentifiers[3];
-					std::wstring _str2 = prefix + partIdentifiers[1];
-					std::wstring _str3 = prefix + partIdentifiers[4];
-					std::wstring _str4 = prefix + partIdentifiers[2];
-					std::wstring _str5 = prefix + partIdentifiers[0];
-					std::wstring _str6 = prefix + partIdentifiers[5];
-
-					for (uint32_t j = varindex; j < variables.size() && variables[j].group == group; j++)
-					{
-						if (variables[j].key == _str1)
-							part.iInstalled = j;
-
-						else if (variables[j].key == _str2)
-							part.iBolts = j;
-
-						else if (variables[j].key == _str3)
-							part.iTightness = j;
-
-						else if (variables[j].key == _str4)
-							part.iDamaged = j;
-
-						else if (variables[j].key == _str5)
-							part.iBolted = j;
-
-						else if (variables[j].key == _str6)
-							part.iCorner = j;
-					}
-					part.name = prefix;
-					carparts.push_back(part);
-					prefix.clear();
-				}
+				bases.insert(ExtractBaseFromKey(variables[varIndex].key, identifier));
 			}
 		}
-		varindex = i;
-		group++;
+
+		for (const auto& base : bases)
+		{
+			bool valid = TRUE;
+			if (!partSCs.empty())
+			{
+				for (uint32_t j = 0; j < partSCs.size(); j++)
+				{
+					if (partSCs[j].id == 2 && (NormalizePartBase(partSCs[j].str) == canonicalKey || NormalizePartBase(partSCs[j].str) == NormalizePartBase(base)))
+					{
+						valid = FALSE;
+						break;
+					}
+				}
+			}
+			if (!valid)
+				continue;
+
+			CarPart part;
+			part.name = base;
+
+			if (buckets.size() > 0)
+				part.iBolted = GetIndexForBase(buckets[0], partIdentifiers[0], base);
+			if (buckets.size() > 1)
+				part.iBolts = GetIndexForBase(buckets[1], partIdentifiers[1], base);
+			if (buckets.size() > 2)
+				part.iDamaged = GetIndexForBase(buckets[2], partIdentifiers[2], base);
+			if (buckets.size() > 3)
+				part.iInstalled = GetIndexForBase(buckets[3], partIdentifiers[3], base);
+			if (buckets.size() > 4)
+				part.iTightness = GetIndexForBase(buckets[4], partIdentifiers[4], base);
+			if (buckets.size() > 5)
+				part.iCorner = GetIndexForBase(buckets[5], partIdentifiers[5], base);
+
+			carparts.push_back(part);
+		}
 	}
 }
 
