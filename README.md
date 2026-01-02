@@ -40,7 +40,7 @@ Most of the things work, but i can't guarantee what the results will be. The app
 
 **Q: Can i help?**
 
-Yes please, if you're progressed further into the game and have the rivett all built and various items in different states then i would love to get my hands on a dump extracted by the [Dev cconsole](https://www.nexusmods.com/mywintercar/mods/57)
+Yes please, if you're progressed further into the game and have the rivett all built and various items in different states then i would love to get my hands on a dump extracted by the [Dev console](https://www.nexusmods.com/mywintercar/mods/57)
 
 
 
