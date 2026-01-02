@@ -256,6 +256,7 @@
   <ItemGroup>
     <ClCompile Include="dlgprocs.cpp" />
     <ClCompile Include="externs.cpp" />
+    <ClCompile Include="grouping.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="map.cpp" />
     <ClCompile Include="map_dlgprocs.cpp" />
@@ -266,6 +267,7 @@
   <ItemGroup>
     <ClInclude Include="dlgprocs.h" />
     <ClInclude Include="externs.h" />
+    <ClInclude Include="grouping.h" />
     <ClInclude Include="heightmap.h" />
     <ClInclude Include="Main.h" />
     <ClInclude Include="map.h" />

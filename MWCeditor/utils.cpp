@@ -864,6 +864,19 @@ void FillVector(const std::vector<std::wstring> &params, const std::wstring &ide
 				bStartWithMap = bSetting;
 		}
 	}
+	else if (identifier == L"Grouping_Aliases")
+	{
+		if (params.size() >= 2)
+		{
+			std::wstring sanitizedLookup = params[0];
+			std::wstring sanitizedGroupingKey = params.size() >= 3 ? params[2] : params[0];
+
+			SanitizeTagStr(sanitizedLookup);
+			SanitizeTagStr(sanitizedGroupingKey);
+
+			groupingAliases[sanitizedLookup] = GroupingAlias{ sanitizedGroupingKey, params[1] };
+		}
+	}
 }
 
 BOOL LoadDataFile(const std::wstring &datafilename)
@@ -872,6 +885,7 @@ BOOL LoadDataFile(const std::wstring &datafilename)
 
 	wstring strInput, identifier;
 	vector<wstring> params;
+	groupingAliases.clear();
 	wifstream inf(datafilename, wifstream::in);
 	if (!inf.is_open())
 		return 1;
@@ -1829,30 +1843,6 @@ inline bool PartIsStuck(std::wstring &stuckStr, const std::vector<uint32_t> &bol
 	return FALSE;
 }
 
-static std::wstring NormalizePartBase(const std::wstring& base)
-{
-	size_t digitOffset = base.size();
-	while (digitOffset > 0 && std::iswdigit(base[digitOffset - 1]))
-		--digitOffset;
-
-	if (digitOffset == base.size())
-		return base;
-
-	std::wstring normalizedDigits = base.substr(digitOffset);
-	size_t nonZeroOffset = normalizedDigits.find_first_not_of(L'0');
-	normalizedDigits = nonZeroOffset == std::wstring::npos ? L"0" : normalizedDigits.substr(nonZeroOffset);
-
-	return base.substr(0, digitOffset) + normalizedDigits;
-}
-
-static std::wstring ExtractBaseFromKey(const std::wstring& key, const std::wstring& identifier)
-{
-	if (key.size() < identifier.size())
-		return L"";
-
-	return key.substr(0, key.size() - identifier.size());
-}
-
 static uint32_t GetIndexForBase(const std::vector<uint32_t>& indices, const std::wstring& identifier, const std::wstring& base)
 {
 	const std::wstring normalizedBase = NormalizePartBase(base);
@@ -1946,6 +1936,12 @@ void PopulateCarparts()
 
 			CarPart part;
 			part.name = base;
+			const GroupingResolution resolution = ResolveGroupingKey(base, base, groupingAliases, GroupingIdentifierConfig());
+			part.matchedPrefix = resolution.matchedPrefix.empty() ? resolution.groupingKey : resolution.matchedPrefix;
+			std::wstring suffix = part.name;
+			if (!part.matchedPrefix.empty() && StartsWithStr(part.name, part.matchedPrefix))
+				suffix = part.name.substr(part.matchedPrefix.size());
+			part.displayName = (resolution.displayLabel.empty() ? base : resolution.displayLabel) + suffix;
 
 			if (buckets.size() > 0)
 				part.iBolted = GetIndexForBase(buckets[0], partIdentifiers[0], base);
@@ -2050,7 +2046,7 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 			ov->numDamaged++;
 
 	lvi.mask = LVIF_TEXT | LVIF_STATE | LVIF_PARAM; lvi.state = 0; lvi.stateMask = 0;
-	lvi.iItem = item; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)part->name.c_str(), lvi.lParam = item;
+	lvi.iItem = item; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)(part->displayName.empty() ? part->name.c_str() : part->displayName.c_str()); lvi.lParam = item;
 	SendMessage(hList3, LVM_INSERTITEM, 0, (LPARAM)&lvi);
 
 	lvi.mask = LVIF_TEXT | LVIF_STATE; lvi.state = 0; lvi.stateMask = 0;
@@ -2256,7 +2252,7 @@ void UpdateList(const std::wstring &str)
 			}
 
 			lvi.mask = LVIF_TEXT | LVIF_STATE | LVIF_PARAM; lvi.state = 0; lvi.stateMask = 0;
-			lvi.iItem = i; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)entries[i].c_str(); lvi.lParam = (LPARAM)param;
+			lvi.iItem = i; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)entries[i].display.c_str(); lvi.lParam = (LPARAM)param;
 			SendMessage(hList, LVM_INSERTITEM, 0, (LPARAM)&lvi);
 		}
 	}
@@ -2267,7 +2263,8 @@ void UpdateList(const std::wstring &str)
 
 		for (uint32_t i = 0; i < variables.size(); i++)
 		{
-			if (ContainsStr(variables[i].key, str))
+			const GroupingEntry& groupEntry = entries[variables[i].group];
+			if (ContainsStr(variables[i].key, str) || ContainsStr(groupEntry.display, str) || ContainsStr(groupEntry.key, str))
 			{
 				if (index == 0)
 				{
@@ -2302,7 +2299,7 @@ void UpdateList(const std::wstring &str)
 				}
 			}
 			lvi.mask = LVIF_TEXT | LVIF_STATE | LVIF_PARAM; lvi.state = 0; lvi.stateMask = 0;
-			lvi.iItem = i; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)entries[indizes[i]].c_str(); lvi.lParam = (LPARAM)param;
+			lvi.iItem = i; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)entries[indizes[i]].display.c_str(); lvi.lParam = (LPARAM)param;
 			SendMessage(hList, LVM_INSERTITEM, 0, (LPARAM)&lvi);
 		}
 
@@ -2706,6 +2703,22 @@ std::string BoltsToBin(std::vector<uint32_t> &bolts)
 // Really slow because of vector? Should maybe refactor?
 int Variables_add(Variable var)
 {
+	const bool isItemFile = IsItemFile();
+	std::vector<Item> sortedItemTypes;
+	GroupingIdentifierConfig identifierConfig;
+	if (isItemFile)
+	{
+		sortedItemTypes = itemTypes;
+		std::sort(sortedItemTypes.begin(), sortedItemTypes.end(), [](const Item& a, const Item& b) -> bool { return a.GetName().size() > b.GetName().size(); });
+		identifierConfig.isItemFile = true;
+		identifierConfig.sortedItemTypes = &sortedItemTypes;
+	}
+
+	const GroupingResolution resolution = ResolveGroupingKey(var.raw_key, var.key, groupingAliases, identifierConfig);
+	const std::wstring groupingKey = resolution.groupingKey.empty() ? var.key : resolution.groupingKey;
+	const std::wstring displayLabel = resolution.displayLabel.empty() ? groupingKey : resolution.displayLabel;
+	const std::wstring matchedPrefix = resolution.matchedPrefix.empty() ? groupingKey : resolution.matchedPrefix;
+
 	uint32_t index = 0;
 	uint32_t group = UINT_MAX;
 	for (index; index < variables.size(); index++)
@@ -2720,7 +2733,7 @@ int Variables_add(Variable var)
 		if (n < 0) n = 0;
 		if (static_cast<uint32_t>(n) >= static_cast<uint32_t>(variables.size())) 
 			n = static_cast<uint32_t>(variables.size()) - 1;
-		if (ContainsStr(var.key, entries[variables[n].group]))
+		if (ContainsStr(var.key, entries[variables[n].group].key))
 			group = variables[n].group;
 	}
 	if (group == UINT_MAX)
@@ -2734,7 +2747,7 @@ int Variables_add(Variable var)
 		{
 			variables[i].group += 1;
 		}
-		entries.insert((entries.begin() + group), var.key); // slow af lol
+		entries.insert((entries.begin() + group), GroupingEntry{ groupingKey, displayLabel, resolution.ruleSource, matchedPrefix }); // slow af lol
 	}
 		
 	var.group = group;
@@ -3030,19 +3043,6 @@ BOOL FindVariable(const std::wstring &str, const bool bConvert2Lower)
 	return -1;
 }
 
-std::wstring GetItemPrefix(const std::wstring& VariableKey, const std::vector<Item>* SortedItemTypes)
-{
-	for (auto& item : *SortedItemTypes)
-	{
-		std::wstring name = *SanitizeTagStr(item.GetName());
-		if (VariableKey.substr(0, name.size()) == name)
-			for (auto i = static_cast<uint32_t>(name.size()); i < VariableKey.size(); i++)
-				if (!isdigit(VariableKey[i]))
-					return VariableKey.substr(0, i);
-	}
-	return std::wstring();
-}
-
 // This function is responsible of pooling variables into groups. Variables of the same group will be shown in the list on the right when selected
 // Called after parsing the file, and also when we need to resort the list after variabels have been renamed (e.g. CLeanItems)
 uint32_t PopulateGroups(bool bRequiresSort,  std::vector<Variable> *pvariables)
@@ -3052,8 +3052,9 @@ uint32_t PopulateGroups(bool bRequiresSort,  std::vector<Variable> *pvariables)
 
 	uint32_t group = UINT_MAX;
 	bool bIsItemFile = IsItemFile();
-	std::wstring previous_extract(1, '\0');
+	std::wstring previous_extract;
 	std::vector<Item> sortedItemTypes;
+	GroupingIdentifierConfig identifierConfig;
 	entries.clear();
 
 	if (bIsItemFile)
@@ -3061,17 +3062,23 @@ uint32_t PopulateGroups(bool bRequiresSort,  std::vector<Variable> *pvariables)
 		// we sort by longest itemnames here to avoid substring issues when grouping
 		sortedItemTypes = itemTypes;
 		std::sort(sortedItemTypes.begin(), sortedItemTypes.end(), [](const Item &a, const Item &b) -> bool { return a.GetName().size() > b.GetName().size(); });
+		identifierConfig.isItemFile = true;
+		identifierConfig.sortedItemTypes = &sortedItemTypes;
 	}
 
 	for (uint32_t i = 0; i < pvariables->size(); i++)
 	{
-		if (pvariables->at(i).key.substr(0, previous_extract.length()) != previous_extract)
+		const GroupingResolution resolution = ResolveGroupingKey(pvariables->at(i).raw_key, pvariables->at(i).key, groupingAliases, identifierConfig);
+		const std::wstring groupingKey = resolution.groupingKey.empty() ? pvariables->at(i).key : resolution.groupingKey;
+		const std::wstring displayLabel = resolution.displayLabel.empty() ? groupingKey : resolution.displayLabel;
+		const std::wstring matchedPrefix = resolution.matchedPrefix.empty() ? groupingKey : resolution.matchedPrefix;
+		const bool useStrictGrouping = resolution.ruleSource == L"alias" || resolution.ruleSource == L"item_prefix";
+
+		if (previous_extract.empty() || (useStrictGrouping ? groupingKey != previous_extract : !StartsWithStr(pvariables->at(i).key, previous_extract)))
 		{
 			group++;
-			previous_extract = bIsItemFile ? GetItemPrefix(pvariables->at(i).key, &sortedItemTypes) : pvariables->at(i).key;
-			if (bIsItemFile && previous_extract.empty())
-				previous_extract = pvariables->at(i).key;
-			entries.push_back(previous_extract);
+			previous_extract = useStrictGrouping ? groupingKey : matchedPrefix;
+			entries.push_back(GroupingEntry{ groupingKey, displayLabel, resolution.ruleSource, matchedPrefix });
 		}
 		pvariables->at(i).group = group;
 	}
@@ -3115,6 +3122,18 @@ bool StartsWithStr(const std::wstring &target, const std::wstring &str)
 			return TRUE;
 	}
 	return FALSE;
+}
+
+std::wstring GetGroupedDisplayName(const Variable& var, const GroupingEntry& entry)
+{
+	const std::wstring& sourceKey = var.key;
+	const std::wstring& prefix = entry.matchedPrefix.empty() ? entry.key : entry.matchedPrefix;
+	const std::wstring& baseDisplay = entry.display.empty() ? entry.key : entry.display;
+
+	if (!prefix.empty() && StartsWithStr(sourceKey, prefix))
+		return baseDisplay + sourceKey.substr(prefix.size());
+
+	return baseDisplay + sourceKey;
 }
 
 inline std::wstring ParseBracketStr(std::wstring &str, uint32_t i)
