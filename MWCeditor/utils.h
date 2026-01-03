@@ -4,11 +4,14 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <locale>
 #include <codecvt>
 #include "structs.h"
 #include "resource.h"
 #include "externs.h"
+
+using VariableLookupMap = std::unordered_map<std::wstring, uint32_t>;
 
 //templates
 
@@ -82,6 +85,9 @@ int CALLBACK AlphComp(LPARAM lp1, LPARAM lp2, LPARAM sortParam);
 void OnSortHeader(LPNMLISTVIEW pLVInfo);
 LPARAM MakeLPARAM(const uint32_t &i, const uint32_t &j, const bool &negative = false);
 void BreakLPARAM(const LPARAM &lparam, int &i, int &j);
+VariableLookupMap BuildVariableLookupMap();
+uint32_t GetAidValue(const std::string& value);
+bool IsAidInstalled(const Variable& variable);
 
 void OpenFileDialog(std::wstring &fpath, std::wstring &fname);
 void InitMainDialog(HWND hwnd);
@@ -103,7 +109,6 @@ void ShowObjectOnMap(class Variable* var);
 void CleanEmptyItems();
 void CompareVariables(const std::vector <Variable> *v1, const std::vector <Variable> *v2, const COMPDLGRET *options);
 int CompareStrs(const std::wstring &str1, const std::wstring &str2);
-BOOL CompareStrsWithWildcard(const std::wstring &StrWithNumber, const std::wstring &StrWithWildcard);
 int CompareBolts(const std::wstring &str1, const std::wstring &str2);
 void PopulateCarparts();
 void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov);
