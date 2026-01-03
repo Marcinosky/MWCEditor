@@ -1099,7 +1099,7 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 	case WM_INITDIALOG:
 	{
 		// Create the child list
-		const int ListWidth = 380;
+		const int ListWidth = 480;
 		HWND hProperties = CreateDialog(hInst, MAKEINTRESOURCE(IDD_BLANK), hwnd, PropertyListProc);
 		ShowWindow(hProperties, SW_SHOW);
 		SetWindowPos(hProperties, NULL, 12, 13, ListWidth, 423, SWP_SHOWWINDOW);
@@ -1178,19 +1178,19 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 				COLORREF tColor;
 				bool bActionAvailable;
 
-				HWND hDisplayText = CreateWindowEx(0, WC_STATIC, carproperties[i].displayname.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 6, 0 + offset, 150, yChar + 1, hProperties, (HMENU)ID_PL_DTXT + RowID, hInst, NULL);
+				HWND hDisplayText = CreateWindowEx(0, WC_STATIC, carproperties[i].displayname.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 6, 0 + offset, 240, yChar + 1, hProperties, (HMENU)ID_PL_DTXT + RowID, hInst, NULL);
 				SendMessage(hDisplayText, WM_SETFONT, (WPARAM)hListFont, TRUE);
 
 				bActionAvailable = GetStateLabelSpecs(&carproperties[i], value, tColor);
 
-				HWND hDisplayState = CreateWindowEx(0, WC_STATIC, value.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 162, 0 + offset, 40, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_STATE + RowID) , hInst, NULL);
+				HWND hDisplayState = CreateWindowEx(0, WC_STATIC, value.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 272, 0 + offset, 40, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_STATE + RowID) , hInst, NULL);
 				SendMessage(hDisplayState, WM_SETFONT, (WPARAM)hListFont, TRUE);
 
 				// Alloc memory on heap to store state's color and default window process
 				AllocWindowUserData(hDisplayState, (LONG_PTR)PropertyListControlProc, 0, tColor);
 
 				value = variables[carproperties[i].index].GetDisplayString();
-				HWND hDisplayValue = CreateWindowEx(0, WC_STATIC, value.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 210, 0 + offset, 100, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_EDIT + RowID), hInst, NULL);
+				HWND hDisplayValue = CreateWindowEx(0, WC_STATIC, value.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 325, 0 + offset, 100, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_EDIT + RowID), hInst, NULL);
 				SendMessage(hDisplayValue, WM_SETFONT, (WPARAM)hListFont, TRUE);
 
 				// Alloc memory on heap to store DisplayValues property ID and default window process (ID needed by fix button)
@@ -1198,7 +1198,7 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 
 				if (bActionAvailable)
 				{
-					HWND hFixButton = CreateWindowEx(0, WC_BUTTON, L"fix", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, 324, 0 + offset - 2, 20, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_BUTTON + RowID), hInst, NULL);
+					HWND hFixButton = CreateWindowEx(0, WC_BUTTON, L"fix", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, 450, 0 + offset - 2, 20, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_BUTTON + RowID), hInst, NULL);
 					SendMessage(hFixButton, WM_SETFONT, (WPARAM)hListFont, TRUE);
 				}
 				RowID += 1;
