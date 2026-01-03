@@ -52,6 +52,36 @@ std::wstring ExtractAidDigits(const std::wstring& key, const std::wstring& prefi
 	return key.substr(digitStart, digitEnd - digitStart);
 }
 
+bool HasInstalledAidSibling(const std::wstring& key)
+{
+	size_t digitStart = std::wstring::npos;
+	size_t digitEnd = std::wstring::npos;
+
+	for (size_t i = 0; i < key.size(); i++)
+	{
+		if (iswdigit(key[i]))
+		{
+			digitStart = i;
+			for (digitEnd = i; digitEnd < key.size() && iswdigit(key[digitEnd]); digitEnd++);
+			i = digitEnd;
+		}
+	}
+
+	if (digitStart == std::wstring::npos || digitEnd == std::wstring::npos)
+		return FALSE;
+
+	const std::wstring digits = key.substr(digitStart, digitEnd - digitStart);
+	const std::wstring prefix = key.substr(0, digitStart);
+	const std::wstring aidKey = prefix + digits + L"aid";
+
+	const auto it = std::find_if(variables.begin(), variables.end(), [&](const Variable& var)
+		{
+			return var.key == aidKey;
+		});
+
+	return it != variables.end() && IsAidInstalled(*it);
+}
+
 bool IsMaintenanceVariableRelevant(const std::wstring& key)
 {
 	if (StartsWithStr(key, L"wheel") && ContainsStr(key, L"damagevector"))
@@ -60,16 +90,21 @@ bool IsMaintenanceVariableRelevant(const std::wstring& key)
 	if (carparts.empty())
 		return TRUE;
 
+	bool matchedPart = FALSE;
 	for (const auto& part : carparts)
 	{
 		if (!StartsWithStr(key, part.name))
 			continue;
 
+		matchedPart = TRUE;
 		if (part.iInstalled == UINT_MAX)
 			return FALSE;
 
 		return IsAidInstalled(variables[part.iInstalled]);
 	}
+
+	if (!matchedPart)
+		return HasInstalledAidSibling(key);
 
 	return FALSE;
 }
