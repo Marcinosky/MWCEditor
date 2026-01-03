@@ -1854,12 +1854,44 @@ static bool PartIsDamaged(const CarPart* part)
 	if (!part || part->iDamaged == UINT_MAX)
 		return FALSE;
 
-	const auto& wearValue = variables[part->iDamaged].value;
+	const auto& var = variables[part->iDamaged];
+	const auto& wearValue = var.value;
+
 	if (wearValue.size() < sizeof(float))
+	{
+#ifdef _DEBUG
+		LOG(L"[DAMAGED?] INVALID SIZE | index=" +
+			std::to_wstring(part->iDamaged) +
+			L" key=" + var.key +
+			L" size=" + std::to_wstring(wearValue.size()) + L"\n");
+#endif
 		return FALSE;
+	}
 
 	const float wear = BinToFloat(wearValue);
-	return wear < 5.f;
+
+#ifdef _DEBUG
+	{
+		std::wstring msg =
+			L"[DAMAGED?] index=" + std::to_wstring(part->iDamaged) +
+			L" key=" + var.key +
+			L" wear=" + std::to_wstring(wear);
+
+		msg += L" raw=0x";
+		static const wchar_t* hex = L"0123456789ABCDEF";
+
+		for (unsigned char c : wearValue)
+		{
+			msg += hex[(c >> 4) & 0xF];
+			msg += hex[c & 0xF];
+		}
+
+		msg += L"\n";
+		LOG(msg);
+	}
+#endif
+
+	return wear < 11.f;
 }
 
 static uint32_t GetIndexForBase(const std::vector<uint32_t>& indices, const std::wstring& identifier, const std::wstring& base)
@@ -2538,9 +2570,10 @@ void BatchProcessDamage(bool all)
 			}
 			if (aid >= 1 || all)
 			{
-				const auto& wearValue = variables[carparts[i].iDamaged].value;
-				if (wearValue.size() >= sizeof(float) && BinToFloat(wearValue) < 5.f)
+				if (PartIsDamaged(&carparts[i]))
+				{
 					UpdateValue(L"100", carparts[i].iDamaged);
+				}
 			}
 		}
 	}
