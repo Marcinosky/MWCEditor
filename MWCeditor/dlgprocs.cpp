@@ -59,11 +59,16 @@ bool IsMaintenanceVariableRelevant(const std::wstring& key)
 
 	for (const auto& part : carparts)
 	{
-		if (StartsWithStr(key, part.name) && part.iInstalled != UINT_MAX)
-			return IsAidInstalled(variables[part.iInstalled]);
+		if (!StartsWithStr(key, part.name))
+			continue;
+
+		if (part.iInstalled == UINT_MAX)
+			return FALSE;
+
+		return IsAidInstalled(variables[part.iInstalled]);
 	}
 
-	return TRUE;
+	return FALSE;
 }
 
 std::vector<std::wstring> CollectInstalledAidDigits(const std::wstring& prefix, const VariableLookupMap& variableLookup)
