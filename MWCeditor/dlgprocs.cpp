@@ -1198,7 +1198,7 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 
 				if (bActionAvailable)
 				{
-					HWND hFixButton = CreateWindowEx(0, WC_BUTTON, L"fix", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, 450, 0 + offset - 2, 20, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_BUTTON + RowID), hInst, NULL);
+					HWND hFixButton = CreateWindowEx(0, WC_BUTTON, L"fix", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, 440, 0 + offset - 2, 20, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_BUTTON + RowID), hInst, NULL);
 					SendMessage(hFixButton, WM_SETFONT, (WPARAM)hListFont, TRUE);
 				}
 				RowID += 1;
