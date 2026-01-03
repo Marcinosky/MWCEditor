@@ -371,25 +371,33 @@ void BreakLPARAM(const LPARAM &lparam, int &i, int &j)
 	}
 }
 
-// 0 if not equal, 1 if equal without wildcard, 2 if equal with wildcard
-BOOL CompareStrsWithWildcard(const std::wstring &StrWithNumber, const std::wstring &StrWithWildcard)
+VariableLookupMap BuildVariableLookupMap()
 {
-	uint32_t offset = 0;
-	for (uint32_t i = 0; i < (StrWithNumber.size() - offset); i++)
+	VariableLookupMap lookup;
+	lookup.reserve(variables.size());
+
+	for (uint32_t i = 0; i < variables.size(); i++)
+		lookup.emplace(variables[i].key, i);
+
+	return lookup;
+}
+
+uint32_t GetAidValue(const std::string& value)
+{
+	uint32_t aid = 0;
+	if (!value.empty())
 	{
-		if (StrWithWildcard[i + (offset > 0 ? 1 : 0)] == '*')
-		{
-			for (offset = i; offset < StrWithNumber.size(); offset++)
-				if (!std::iswdigit(StrWithNumber[offset]))
-					break;
-			offset += -static_cast<int>(i);
-		}
-		wchar_t bla2 = StrWithWildcard[i + (offset > 0 ? 1 : 0)];
-		wchar_t bla1 = StrWithNumber[i + offset];
-		if (StrWithNumber[i + offset] != StrWithWildcard[i + (offset > 0 ? 1 : 0)])
-			return false;
+		if (value == "true")
+			aid = 1;
+		else if (value != "false")
+			aid = static_cast<unsigned char>(value[0]);
 	}
-	return StrWithNumber.size() != StrWithWildcard.size() ? FALSE : 1 + offset;
+	return aid;
+}
+
+bool IsAidInstalled(const Variable& variable)
+{
+	return GetAidValue(variable.value) >= 1;
 }
 
 int CompareStrs(const std::wstring &str1, const std::wstring &str2)
@@ -2156,7 +2164,7 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 	if (part->iCorner != UINT_MAX)
 		installedStr = variables[part->iCorner].value.size() > 1 ? BListSymbols[1] : BListSymbols[0];
 	else
-		installedStr = part->iInstalled != UINT_MAX ? (installed ? BListSymbols[1] : BListSymbols[0]) : BListSymbols[2];
+		installedStr = part->iInstalled != UINT_MAX ? (installed ? BListSymbols[1] : BListSymbols[0]) : BListSymbols[0];
 
 	lvi.iItem = item; lvi.iSubItem = 3; lvi.pszText = (LPWSTR)installedStr.c_str();
 	SendMessage(hList3, LVM_SETITEM, 0, (LPARAM)&lvi);
@@ -2977,6 +2985,11 @@ QTRN EulerToQuat(const ANGLES *angles)
 float BinToFloat(const std::string &str)
 {
 	return str.size() != 4 ? NAN : *reinterpret_cast<const float*>(str.data());
+}
+
+int BinToInt(const std::string& str)
+{
+	return str.size() < sizeof(int) ? 0 : *reinterpret_cast<const int*>(str.data());
 }
 
 std::wstring BinToFloatStr(const std::string &str)

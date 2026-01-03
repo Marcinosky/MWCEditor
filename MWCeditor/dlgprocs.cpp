@@ -1,5 +1,10 @@
 #include "dlgprocs.h"
 #include <CommCtrl.h>
+#include <algorithm>
+#include <cstdlib>
+#include <cwctype>
+#include <utility>
+#include <unordered_set>
 
 #define		WM_L2CONTEXTMENU			(WM_USER + 10)
 #define		WM_DRAWINFOICON				(WM_USER + 11)
@@ -23,6 +28,187 @@
 
 #undef max
 #undef min
+
+namespace
+{
+
+std::wstring ExtractAidDigits(const std::wstring& key, const std::wstring& prefix)
+{
+	if (!StartsWithStr(key, prefix))
+		return L"";
+
+	const size_t digitStart = prefix.size();
+	size_t digitEnd = digitStart;
+
+	while (digitEnd < key.size() && iswdigit(key[digitEnd]))
+		digitEnd++;
+
+	if (digitEnd == digitStart)
+		return L"";
+
+	if (digitEnd >= key.size() || key.substr(digitEnd) != L"aid")
+		return L"";
+
+	return key.substr(digitStart, digitEnd - digitStart);
+}
+
+bool HasInstalledAidSibling(const std::wstring& key)
+{
+	size_t digitStart = std::wstring::npos;
+	size_t digitEnd = std::wstring::npos;
+
+	for (size_t i = 0; i < key.size(); i++)
+	{
+		if (iswdigit(key[i]))
+		{
+			digitStart = i;
+			for (digitEnd = i; digitEnd < key.size() && iswdigit(key[digitEnd]); digitEnd++);
+			i = digitEnd;
+		}
+	}
+
+	if (digitStart == std::wstring::npos || digitEnd == std::wstring::npos)
+		return FALSE;
+
+	const std::wstring digits = key.substr(digitStart, digitEnd - digitStart);
+	const std::wstring prefix = key.substr(0, digitStart);
+	const std::wstring aidKey = prefix + digits + L"aid";
+
+	const auto it = std::find_if(variables.begin(), variables.end(), [&](const Variable& var)
+		{
+			return var.key == aidKey;
+		});
+
+	return it != variables.end() && IsAidInstalled(*it);
+}
+
+bool IsMaintenanceVariableRelevant(const std::wstring& key)
+{
+	if (StartsWithStr(key, L"wheel") && ContainsStr(key, L"damagevector"))
+		return TRUE;
+
+	if (carparts.empty())
+		return TRUE;
+
+	bool matchedPart = FALSE;
+	for (const auto& part : carparts)
+	{
+		if (!StartsWithStr(key, part.name))
+			continue;
+
+		matchedPart = TRUE;
+		if (part.iInstalled == UINT_MAX)
+			return FALSE;
+
+		return IsAidInstalled(variables[part.iInstalled]);
+	}
+
+	if (!matchedPart)
+		return HasInstalledAidSibling(key);
+
+	return FALSE;
+}
+
+std::vector<std::wstring> CollectInstalledAidDigits(const std::wstring& prefix, const VariableLookupMap& variableLookup)
+{
+	std::vector<std::wstring> digits;
+
+	for (const auto& entry : variableLookup)
+	{
+		const std::wstring& key = entry.first;
+		std::wstring instanceDigits = ExtractAidDigits(key, prefix);
+		if (instanceDigits.empty())
+			continue;
+
+		if (IsAidInstalled(variables[entry.second]))
+			digits.push_back(std::move(instanceDigits));
+	}
+
+	std::sort(digits.begin(), digits.end(), [](const std::wstring& lhs, const std::wstring& rhs)
+	{
+		return ::wcstol(lhs.c_str(), NULL, 10) < ::wcstol(rhs.c_str(), NULL, 10);
+	});
+	digits.erase(std::unique(digits.begin(), digits.end()), digits.end());
+	return digits;
+}
+
+std::wstring BuildInstanceDisplayName(const CarProperty& baseProperty, const std::wstring& prefix, const std::wstring& digits)
+{
+	if (digits.empty())
+		return baseProperty.displayname;
+
+	const auto resolveInstanceLabel = [&](const std::wstring& partKey) -> std::wstring
+	{
+		for (const auto& part : carparts)
+		{
+			if (StartsWithStr(part.name, partKey))
+				return part.displayName.empty() ? part.name : part.displayName;
+		}
+		return partKey;
+	};
+
+	const std::wstring partKey = prefix + digits;
+	const std::wstring instanceLabel = resolveInstanceLabel(partKey);
+	return baseProperty.displayname + L" (" + instanceLabel + L")";
+}
+
+void BindMaintenanceProperty(CarProperty& property, const VariableLookupMap& variableLookup)
+{
+	auto lookupIt = variableLookup.find(property.lookupname);
+	if (lookupIt == variableLookup.end())
+		return;
+
+	if (!IsMaintenanceVariableRelevant(property.lookupname))
+		return;
+
+	property.index = lookupIt->second;
+}
+
+void ExpandMaintenanceProperty(const CarProperty& baseProperty, const VariableLookupMap& variableLookup, std::vector<CarProperty>& expandedProperties)
+{
+	auto wildcardPos = baseProperty.lookupname.find(L'*');
+	if (wildcardPos == std::wstring::npos)
+		return;
+
+	const std::wstring prefix = baseProperty.lookupname.substr(0, wildcardPos);
+	const std::wstring suffix = baseProperty.lookupname.substr(wildcardPos + 1);
+
+	const auto installedDigits = CollectInstalledAidDigits(prefix, variableLookup);
+	for (const auto& digits : installedDigits)
+	{
+		std::wstring resolvedKey = prefix + digits + suffix;
+		auto lookupIt = variableLookup.find(resolvedKey);
+		if (lookupIt == variableLookup.end())
+			continue;
+
+		if (!IsMaintenanceVariableRelevant(resolvedKey))
+			continue;
+
+		CarProperty instanceProperty = baseProperty;
+		instanceProperty.lookupname = resolvedKey;
+		instanceProperty.displayname = BuildInstanceDisplayName(baseProperty, prefix, digits);
+		instanceProperty.index = lookupIt->second;
+		expandedProperties.push_back(std::move(instanceProperty));
+	}
+}
+
+void ResolveMaintenanceProperties(const VariableLookupMap& variableLookup, size_t baseCount)
+{
+	std::vector<CarProperty> expandedProperties;
+
+	for (size_t i = 0; i < baseCount; i++)
+	{
+		auto& property = carproperties[i];
+		if (property.lookupname.find(L'*') != std::wstring::npos)
+			ExpandMaintenanceProperty(property, variableLookup, expandedProperties);
+		else
+			BindMaintenanceProperty(property, variableLookup);
+	}
+
+	carproperties.insert(carproperties.end(), expandedProperties.begin(), expandedProperties.end());
+}
+
+}
 
 // ======================
 // dlg utils
@@ -155,6 +341,57 @@ bool GetStateLabelSpecs(const CarProperty *cProp, std::wstring &sLabel, COLORREF
 		{
 			float fDelta = std::abs(BinToFloat(cProp->optimumBin) - BinToFloat(variables[cProp->index].value));
 			if (fDelta <= kindasmall)
+			{
+				sLabel += STR_GOOD;
+				tColor = CLR_GOOD;
+			}
+		}
+		break;
+	}
+	case EntryValue::Integer:
+	{
+		if (!cProp->worstBin.empty())
+		{
+			const int worstVal = BinToInt(cProp->worstBin);
+			const int optimumVal = BinToInt(cProp->optimumBin);
+			int iMin = std::min(worstVal, optimumVal);
+			int iMax = std::max(worstVal, optimumVal);
+			const int iValue = BinToInt(variables[cProp->index].value);
+
+			if (!cProp->recommendedBin.empty())
+			{
+				if (iValue > iMax || iValue < iMin)
+				{
+					sLabel += STR_BAD;
+					tColor = CLR_BAD;
+					bActionAvailable = TRUE;
+				}
+				else
+				{
+					sLabel += STR_GOOD;
+					tColor = CLR_GOOD;
+				}
+			}
+			else
+			{
+				const int range = iMax - iMin;
+				const int clampedValue = std::max(iMin, std::min(iValue, iMax));
+				double adjusted = static_cast<double>(clampedValue - iMin);
+				if (worstVal > optimumVal)
+					adjusted = static_cast<double>(worstVal - clampedValue);
+
+				const int percentage = range == 0 ? 100 : static_cast<int>((adjusted / static_cast<double>(range)) * 100.0);
+				sLabel += std::to_wstring(percentage);
+				sLabel += L"%";
+				if (percentage < 100)
+					bActionAvailable = TRUE;
+				tColor = (percentage >= 75) ? CLR_GOOD : ((percentage < 15) ? CLR_BAD : CLR_OK);
+			}
+		}
+		else
+		{
+			int iDelta = std::abs(BinToInt(cProp->optimumBin) - BinToInt(variables[cProp->index].value));
+			if (iDelta == 0)
 			{
 				sLabel += STR_GOOD;
 				tColor = CLR_GOOD;
@@ -862,7 +1099,7 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 	case WM_INITDIALOG:
 	{
 		// Create the child list
-		const int ListWidth = 380;
+		const int ListWidth = 480;
 		HWND hProperties = CreateDialog(hInst, MAKEINTRESOURCE(IDD_BLANK), hwnd, PropertyListProc);
 		ShowWindow(hProperties, SW_SHOW);
 		SetWindowPos(hProperties, NULL, 12, 13, ListWidth, 423, SWP_SHOWWINDOW);
@@ -882,117 +1119,43 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 			break;
 
 		// Process the carproperty vector
-		size_t initial_size = carproperties.size();
+		const size_t maintenanceBaseSize = carproperties.size();
+		VariableLookupMap variableLookup = BuildVariableLookupMap();
+		ResolveMaintenanceProperties(variableLookup, maintenanceBaseSize);
+
+		std::unordered_set<std::wstring> maintenanceLookupNames;
+		maintenanceLookupNames.reserve(carproperties.size());
+		for (const auto& property : carproperties)
+		{
+			if (!property.lookupname.empty())
+				maintenanceLookupNames.insert(property.lookupname);
+		}
+
 		for (uint32_t i = 0; i < variables.size(); i++)
 		{
-			// Here we set indices of elements read in from the datafile for faster lookup later
-			for (uint32_t j = 0; j < carproperties.size(); j++)
+			const Variable& variable = variables[i];
+			bool isWearEntry = ContainsStr(variable.key, STR_WEAR) && (variable.header.IsNonContainerOfValueType(EntryValue::Float) || variable.header.IsNonContainerOfValueType(EntryValue::Vector3));
+			if (!isWearEntry)
+				continue;
+
+			if (maintenanceLookupNames.find(variable.key) != maintenanceLookupNames.end())
+				continue;
+
+			if (!IsMaintenanceVariableRelevant(variable.key))
+				continue;
+
+			std::wstring displayname = variable.key;
+			std::size_t pos1 = variable.key.find(STR_WEAR);
+			if (pos1 != std::wstring::npos)
 			{
-				// If bool is > 1 then it's a wildcard, which we're not going to assign an index to directly
-				BOOL IdentifiersEqual = CompareStrsWithWildcard(variables[i].key, carproperties[j].lookupname);
-				if (IdentifiersEqual > 0)
-				{
-					bool bRelevant = TRUE;
-					if (!carparts.empty())
-					{
-						for (uint32_t k = 0; k < carparts.size(); k++)
-						{
-							if (StartsWithStr(variables[i].key, carparts[k].name) &&
-								carparts[k].iInstalled != UINT_MAX)
-							{
-								const std::string& v = variables[carparts[k].iInstalled].value;
-
-								// Relevant if installed:
-								// - MSC: "true"
-								// - MWC: AID >= 1 (binary)
-								uint32_t aid = 0;
-								if (!v.empty())
-								{
-									if (v == "true")
-										aid = 1;
-									else if (v != "false")
-										aid = static_cast<unsigned char>(v[0]);
-								}
-								bRelevant = aid >= 1;
-
-								break;
-							}
-						}
-					}
-					if (bRelevant)
-					{
-						if (IdentifiersEqual == 2)
-							carproperties.push_back(CarProperty(carproperties[j].displayname, variables[i].key, carproperties[j].datatype ,carproperties[j].worstBin, carproperties[j].optimumBin, carproperties[j].recommendedBin, i));
-						else
-							carproperties[j].index = i;
-					}
-					break;
-				}
-			}
-
-			// Now we add elements that contain wear in their key to the property-list
-			if (ContainsStr(variables[i].key, STR_WEAR) && variables[i].header.IsNonContainerOfValueType(EntryValue::Float) || variables[i].header.IsNonContainerOfValueType(EntryValue::Vector3))
-			{
-				bool bAlreadyExists = FALSE;
-				for (uint32_t j = 0; j < initial_size; j++)
-				{
-					if (CompareStrsWithWildcard(variables[i].key, carproperties[j].lookupname))
-					{
-						bAlreadyExists = TRUE;
-						break;
-					}
-				}
-				// If we have no defined carparts, we just assume everything is installed and display everything
-				bool bIsInstalled = carparts.empty();
-				for (uint32_t j = 0; ; j++)
-				{
-					if (j >= carparts.size() || bIsInstalled)
-					{
-						// If we couldn't determine if the related carpart is installed, we just assume it is
-						bIsInstalled = TRUE;
-						break;
-					}
-					if (StartsWithStr(variables[i].key, carparts[j].name))
-					{
-						// If the part has installed key, and is installed, we consider it as installed
-						if (carparts[j].iInstalled != UINT_MAX)
-						{
-							const std::string& installedVal = variables[carparts[j].iInstalled].value;
-							uint32_t aid = 0;
-							if (!installedVal.empty())
-							{
-								if (installedVal == "true")
-									aid = 1;
-								else if (installedVal != "false")
-									aid = static_cast<unsigned char>(installedVal[0]);
-							}
-							if (bIsInstalled = aid >= 1)
-							break;
-						}
-
-						// If the wheel has corner key, and is not empty, we consider it as installed
-						bIsInstalled = carparts[j].iCorner != UINT_MAX && variables[carparts[j].iCorner].value.size() > 1;
-						break;
-					}
-				}
-
-				// If the variable wasn't already in the maintenance entries read in from file, and is installed 
-				if (!bAlreadyExists && bIsInstalled)
-				{
-					// Build display string
-					std::wstring displayname = variables[i].key;
-					std::size_t pos1 = variables[i].key.find(STR_WEAR);
-					if (pos1 != std::wstring::npos)
-					{
-						displayname.replace(pos1, 4, L"");
-						displayname += L" ";
-						displayname += STR_STATE;
-						std::transform(displayname.begin(), displayname.begin() + 1, displayname.begin(), ::toupper);
-						CarProperty cp = CarProperty(displayname, L"", EntryValue::Float, FloatToBin(0.f), FloatToBin(98.f)); 
-						cp.index = i;
-						carproperties.push_back(cp);
-					}
-				}
+				displayname.replace(pos1, 4, L"");
+				displayname += L" ";
+				displayname += STR_STATE;
+				std::transform(displayname.begin(), displayname.begin() + 1, displayname.begin(), ::toupper);
+				CarProperty cp = CarProperty(displayname, variable.key, EntryValue::Float, FloatToBin(0.f), FloatToBin(98.f));
+				cp.index = i;
+				carproperties.push_back(cp);
+				maintenanceLookupNames.insert(variable.key);
 			}
 		}
 
@@ -1015,19 +1178,19 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 				COLORREF tColor;
 				bool bActionAvailable;
 
-				HWND hDisplayText = CreateWindowEx(0, WC_STATIC, carproperties[i].displayname.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 6, 0 + offset, 150, yChar + 1, hProperties, (HMENU)ID_PL_DTXT + RowID, hInst, NULL);
+				HWND hDisplayText = CreateWindowEx(0, WC_STATIC, carproperties[i].displayname.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 6, 0 + offset, 240, yChar + 1, hProperties, (HMENU)ID_PL_DTXT + RowID, hInst, NULL);
 				SendMessage(hDisplayText, WM_SETFONT, (WPARAM)hListFont, TRUE);
 
 				bActionAvailable = GetStateLabelSpecs(&carproperties[i], value, tColor);
 
-				HWND hDisplayState = CreateWindowEx(0, WC_STATIC, value.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 162, 0 + offset, 40, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_STATE + RowID) , hInst, NULL);
+				HWND hDisplayState = CreateWindowEx(0, WC_STATIC, value.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 272, 0 + offset, 40, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_STATE + RowID) , hInst, NULL);
 				SendMessage(hDisplayState, WM_SETFONT, (WPARAM)hListFont, TRUE);
 
 				// Alloc memory on heap to store state's color and default window process
 				AllocWindowUserData(hDisplayState, (LONG_PTR)PropertyListControlProc, 0, tColor);
 
 				value = variables[carproperties[i].index].GetDisplayString();
-				HWND hDisplayValue = CreateWindowEx(0, WC_STATIC, value.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 210, 0 + offset, 100, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_EDIT + RowID), hInst, NULL);
+				HWND hDisplayValue = CreateWindowEx(0, WC_STATIC, value.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 325, 0 + offset, 100, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_EDIT + RowID), hInst, NULL);
 				SendMessage(hDisplayValue, WM_SETFONT, (WPARAM)hListFont, TRUE);
 
 				// Alloc memory on heap to store DisplayValues property ID and default window process (ID needed by fix button)
@@ -1035,7 +1198,7 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 
 				if (bActionAvailable)
 				{
-					HWND hFixButton = CreateWindowEx(0, WC_BUTTON, L"fix", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, 324, 0 + offset - 2, 20, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_BUTTON + RowID), hInst, NULL);
+					HWND hFixButton = CreateWindowEx(0, WC_BUTTON, L"fix", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, 450, 0 + offset - 2, 20, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_BUTTON + RowID), hInst, NULL);
 					SendMessage(hFixButton, WM_SETFONT, (WPARAM)hListFont, TRUE);
 				}
 				RowID += 1;
