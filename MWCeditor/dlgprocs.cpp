@@ -313,6 +313,57 @@ bool GetStateLabelSpecs(const CarProperty *cProp, std::wstring &sLabel, COLORREF
 		}
 		break;
 	}
+	case EntryValue::Integer:
+	{
+		if (!cProp->worstBin.empty())
+		{
+			const int worstVal = BinToInt(cProp->worstBin);
+			const int optimumVal = BinToInt(cProp->optimumBin);
+			int iMin = std::min(worstVal, optimumVal);
+			int iMax = std::max(worstVal, optimumVal);
+			const int iValue = BinToInt(variables[cProp->index].value);
+
+			if (!cProp->recommendedBin.empty())
+			{
+				if (iValue > iMax || iValue < iMin)
+				{
+					sLabel += STR_BAD;
+					tColor = CLR_BAD;
+					bActionAvailable = TRUE;
+				}
+				else
+				{
+					sLabel += STR_GOOD;
+					tColor = CLR_GOOD;
+				}
+			}
+			else
+			{
+				const int range = iMax - iMin;
+				const int clampedValue = std::max(iMin, std::min(iValue, iMax));
+				double adjusted = static_cast<double>(clampedValue - iMin);
+				if (worstVal > optimumVal)
+					adjusted = static_cast<double>(worstVal - clampedValue);
+
+				const int percentage = range == 0 ? 100 : static_cast<int>((adjusted / static_cast<double>(range)) * 100.0);
+				sLabel += std::to_wstring(percentage);
+				sLabel += L"%";
+				if (percentage < 100)
+					bActionAvailable = TRUE;
+				tColor = (percentage >= 75) ? CLR_GOOD : ((percentage < 15) ? CLR_BAD : CLR_OK);
+			}
+		}
+		else
+		{
+			int iDelta = std::abs(BinToInt(cProp->optimumBin) - BinToInt(variables[cProp->index].value));
+			if (iDelta == 0)
+			{
+				sLabel += STR_GOOD;
+				tColor = CLR_GOOD;
+			}
+		}
+		break;
+	}
 	}
 
 	sLabel += L" ";

@@ -147,6 +147,7 @@ bool QuatEqual(const QTRN *a, const QTRN *b);
 QTRN EulerToQuat(const ANGLES *angles);
 ANGLES QuatToEuler(const QTRN *q);
 float BinToFloat(const std::string &str);
+int BinToInt(const std::string& str);
 std::wstring BinStrToWStr(const std::string &str, BOOL bContainsSize = TRUE);
 std::string WStrToBinStr(const std::wstring &str);
 std::string FloatToBin(const float f);

@@ -2987,6 +2987,11 @@ float BinToFloat(const std::string &str)
 	return str.size() != 4 ? NAN : *reinterpret_cast<const float*>(str.data());
 }
 
+int BinToInt(const std::string& str)
+{
+	return str.size() < sizeof(int) ? 0 : *reinterpret_cast<const int*>(str.data());
+}
+
 std::wstring BinToFloatStr(const std::string &str)
 {
 	std::wstring s(64, '\0');
