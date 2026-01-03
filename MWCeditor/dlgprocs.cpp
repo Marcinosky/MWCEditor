@@ -54,6 +54,9 @@ std::wstring ExtractAidDigits(const std::wstring& key, const std::wstring& prefi
 
 bool IsMaintenanceVariableRelevant(const std::wstring& key)
 {
+	if (StartsWithStr(key, L"wheel") && ContainsStr(key, L"damagevector"))
+		return TRUE;
+
 	if (carparts.empty())
 		return TRUE;
 
