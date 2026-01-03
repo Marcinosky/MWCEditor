@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cwctype>
-#include <optional>
 #include <utility>
 #include <unordered_set>
 
@@ -36,37 +35,47 @@ namespace
 constexpr size_t MinAidDigits = 1;
 constexpr size_t MaxAidDigits = 2;
 
-std::optional<std::wstring> MatchMaintenancePattern(const std::wstring& pattern, const std::wstring& key, size_t minDigits, size_t maxDigits)
+bool MatchMaintenancePattern(const std::wstring& pattern, const std::wstring& key, size_t minDigits, size_t maxDigits, std::wstring& outDigits)
 {
+	outDigits.clear();
+
 	const size_t wildcardPos = pattern.find(L'*');
 	if (wildcardPos == std::wstring::npos)
-		return pattern == key ? std::optional<std::wstring>(L"") : std::nullopt;
+	{
+		if (pattern == key)
+		{
+			outDigits = L"";
+			return TRUE;
+		}
+		return FALSE;
+	}
 
 	const std::wstring prefix = pattern.substr(0, wildcardPos);
 	const std::wstring suffix = pattern.substr(wildcardPos + 1);
 
 	if (!StartsWithStr(key, prefix))
-		return std::nullopt;
+		return FALSE;
 
 	if (key.size() < prefix.size() + suffix.size() + minDigits)
-		return std::nullopt;
+		return FALSE;
 
 	if (suffix.size() > key.size() - prefix.size())
-		return std::nullopt;
+		return FALSE;
 
 	if (!suffix.empty() && key.compare(key.size() - suffix.size(), suffix.size(), suffix) != 0)
-		return std::nullopt;
+		return FALSE;
 
 	const size_t digitStart = prefix.size();
 	const size_t digitCount = key.size() - prefix.size() - suffix.size();
 	if (digitCount < minDigits || digitCount > maxDigits)
-		return std::nullopt;
+		return FALSE;
 
 	const std::wstring digits = key.substr(digitStart, digitCount);
 	if (!std::all_of(digits.begin(), digits.end(), iswdigit))
-		return std::nullopt;
+		return FALSE;
 
-	return digits;
+	outDigits = digits;
+	return TRUE;
 }
 
 std::unordered_map<std::wstring, bool> aidInstallCache;
@@ -123,12 +132,12 @@ bool IsMaintenanceVariableRelevant(const std::wstring& key, const std::wstring& 
 	const size_t wildcardPos = pattern.find(L'*');
 	if (wildcardPos != std::wstring::npos)
 	{
-		auto digits = MatchMaintenancePattern(pattern, key, MinAidDigits, MaxAidDigits);
-		if (!digits.has_value())
+		std::wstring digits;
+		if (!MatchMaintenancePattern(pattern, key, MinAidDigits, MaxAidDigits, digits))
 			return FALSE;
 
 		const std::wstring prefix = pattern.substr(0, wildcardPos);
-		const std::wstring aidKey = prefix + digits.value() + L"aid";
+		const std::wstring aidKey = prefix + digits + L"aid";
 		return IsAidKeyInstalled(aidKey, variableLookup);
 	}
 
@@ -162,12 +171,12 @@ std::vector<std::wstring> CollectInstalledAidDigits(const std::wstring& pattern,
 	for (const auto& entry : variableLookup)
 	{
 		const std::wstring& key = entry.first;
-		auto instanceDigits = MatchMaintenancePattern(aidPattern, key, MinAidDigits, MaxAidDigits);
-		if (!instanceDigits.has_value())
+		std::wstring instanceDigits;
+		if (!MatchMaintenancePattern(aidPattern, key, MinAidDigits, MaxAidDigits, instanceDigits))
 			continue;
 
 		if (IsAidKeyInstalled(key, variableLookup))
-			digits.push_back(std::move(instanceDigits.value()));
+			digits.push_back(std::move(instanceDigits));
 	}
 
 	std::sort(digits.begin(), digits.end(), [](const std::wstring& lhs, const std::wstring& rhs)
