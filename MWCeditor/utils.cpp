@@ -2164,7 +2164,7 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 	if (part->iCorner != UINT_MAX)
 		installedStr = variables[part->iCorner].value.size() > 1 ? BListSymbols[1] : BListSymbols[0];
 	else
-		installedStr = part->iInstalled != UINT_MAX ? (installed ? BListSymbols[1] : BListSymbols[0]) : BListSymbols[2];
+		installedStr = part->iInstalled != UINT_MAX ? (installed ? BListSymbols[1] : BListSymbols[0]) : BListSymbols[0];
 
 	lvi.iItem = item; lvi.iSubItem = 3; lvi.pszText = (LPWSTR)installedStr.c_str();
 	SendMessage(hList3, LVM_SETITEM, 0, (LPARAM)&lvi);
