@@ -254,6 +254,7 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="debug_dump.cpp" />
     <ClCompile Include="dlgprocs.cpp" />
     <ClCompile Include="externs.cpp" />
     <ClCompile Include="grouping.cpp" />

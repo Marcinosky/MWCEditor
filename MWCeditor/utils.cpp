@@ -1607,6 +1607,10 @@ void InitMainDialog(HWND hwnd)
 		SetWindowText(hDialog, (LPCWSTR)TitleStr.c_str());
 	}
 
+#ifdef _DEBUG
+	DumpStateToJson(L"FINAL_STATE");
+#endif
+
 	LoadLists(hwnd);
 
 	// Enable menus
@@ -3026,8 +3030,8 @@ uint32_t ParseItemID(const std::wstring &str, const uint32_t sIndex)
 
 inline int CharBucket(wchar_t c)
 {
-	if (c >= L'a' && c <= L'z') return c - L'a';           // 0–25
-	if (c >= L'0' && c <= L'9') return 26 + (c - L'0');   // 26–35
+	if (c >= L'a' && c <= L'z') return c - L'a';           // 0-25
+	if (c >= L'0' && c <= L'9') return 26 + (c - L'0');   // 26-35
 	if (c == L'"')              return 36;               // 36
 	return 37;                                          // other junk
 }
@@ -3288,11 +3292,19 @@ ErrorCode ParseSavegame(std::wstring *differentfilepath, std::vector<Variable> *
 		pvariables->push_back(Variable(ValueHeader, ValueStr, static_cast<uint32_t>(pvariables->size()), TagStrRaw, TagStrFormatted));
 	}
 	iwc.close();
+#ifdef _DEBUG
+	if (!varlist)
+		DumpStateToJson(L"AFTER_LOAD");
+#endif
 	std::sort(pvariables->begin(), pvariables->end(), [](const Variable &a, const Variable &b) -> bool { return a.key < b.key; } );
 
 	uint32_t NumGroups = UINT_MAX;
 	if (!varlist)
 		NumGroups = PopulateGroups(FALSE, pvariables);
+#ifdef _DEBUG
+	if (!varlist)
+		DumpStateToJson(L"AFTER_GROUPING");
+#endif
 	
 	if (dbglog)
 	{

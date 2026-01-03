@@ -152,3 +152,8 @@ std::wstring* SanitizeTagStr(std::wstring &str);
 std::wstring GetGroupedDisplayName(const Variable& var, const GroupingEntry& entry);
 std::pair<int, int64_t> ParseSavegame(std::wstring *differentfilepath = NULL, std::vector<Variable> *varlist = NULL);
 void DumpParsedSavegame();
+#ifdef _DEBUG
+void DumpStateToJson(const std::wstring& tag);
+#else
+inline void DumpStateToJson(const std::wstring&) {}
+#endif
