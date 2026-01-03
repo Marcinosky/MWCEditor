@@ -54,32 +54,35 @@ std::wstring ExtractAidDigits(const std::wstring& key, const std::wstring& prefi
 
 bool HasInstalledAidSibling(const std::wstring& key)
 {
-	size_t digitStart = std::wstring::npos;
-	size_t digitEnd = std::wstring::npos;
+	size_t digitStart = 0;
+	while (digitStart < key.size() && !iswdigit(key[digitStart]))
+		digitStart++;
 
-	for (size_t i = 0; i < key.size(); i++)
+	for (; digitStart < key.size();)
 	{
-		if (iswdigit(key[i]))
-		{
-			digitStart = i;
-			for (digitEnd = i; digitEnd < key.size() && iswdigit(key[digitEnd]); digitEnd++);
-			i = digitEnd;
-		}
+		size_t digitEnd = digitStart;
+		while (digitEnd < key.size() && iswdigit(key[digitEnd]))
+			digitEnd++;
+
+		const std::wstring digits = key.substr(digitStart, digitEnd - digitStart);
+		const std::wstring prefix = key.substr(0, digitStart);
+		const std::wstring aidKey = prefix + digits + L"aid";
+
+		const auto it = std::find_if(variables.begin(), variables.end(), [&](const Variable& var)
+			{
+				return var.key == aidKey;
+			});
+
+		if (it != variables.end() && IsAidInstalled(*it))
+			return TRUE;
+
+		while (digitEnd < key.size() && !iswdigit(key[digitEnd]))
+			digitEnd++;
+
+		digitStart = digitEnd;
 	}
 
-	if (digitStart == std::wstring::npos || digitEnd == std::wstring::npos)
-		return FALSE;
-
-	const std::wstring digits = key.substr(digitStart, digitEnd - digitStart);
-	const std::wstring prefix = key.substr(0, digitStart);
-	const std::wstring aidKey = prefix + digits + L"aid";
-
-	const auto it = std::find_if(variables.begin(), variables.end(), [&](const Variable& var)
-		{
-			return var.key == aidKey;
-		});
-
-	return it != variables.end() && IsAidInstalled(*it);
+	return FALSE;
 }
 
 bool IsMaintenanceVariableRelevant(const std::wstring& key)
