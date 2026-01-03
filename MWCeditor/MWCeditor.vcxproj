@@ -144,7 +144,7 @@
       </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_MAP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
     </ClCompile>
     <Link>
@@ -154,7 +154,7 @@
       <AdditionalLibraryDirectories>C:\Program Files %28x86%29\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.11.25503\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <ResourceCompile>
-      <PreprocessorDefinitions>_MAP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -254,6 +254,7 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="debug_dump.cpp" />
     <ClCompile Include="dlgprocs.cpp" />
     <ClCompile Include="externs.cpp" />
     <ClCompile Include="grouping.cpp" />
@@ -287,7 +288,7 @@
     <Image Include="mwce.ico" />
   </ItemGroup>
   <ItemGroup>
-	<None Include="mwce.ini" />
+    <None Include="mwce.ini" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
