@@ -33,14 +33,15 @@ Most of the things work, but i can't guarantee what the results will be. The app
 
 - The map is disabled entirely untill i get my hands on a high quality picture of the new map, or at least get the old one from the author
 - Some item properties are still not defined for the new game, behavior of automatic item teleport may vary
-- Maintenance tab in the report is empty, need to update part names and get updated sweetspot documentation
+- Maintenance tab recommended values may not actually be the best, we need people to come up with meta values
+- Valve lash and some other values are missing from the report, they're my priority
 - Aliases for all the parts are needed, they aren't saved untill bought in-game
 
 
 
 **Q: Can i help?**
 
-Yes please, if you're progressed further into the game and have the rivett all built and various items in different states then i would love to get my hands on a dump extracted by the [Dev console](https://www.nexusmods.com/mywintercar/mods/57)
+If you understand what some values mean or have a good value for a recommended setting then please let me know
 
 
 
@@ -63,8 +64,5 @@ AppData\\LocalLow\\Amistech\\My Winter Car. The tool should open the correct fol
 * updated the timetable, old entries im not sure about tagged with (?)
 * `carparts.txt` file contains majority of car data
 * Rivett report works, bolt tightness can be inspected
-* Damaged, Bolted statuses from old game are not present here but logic leftover for now
-* Fixing bolts/stuck parts and their detection not tested, report issues if found
-* maintenance tab needs definitions updated to new parts
-* not all part names are aliased currently (show up as vinXXX instead of a part name)
-* aliases, definitions will be updated once i progress further in the game
+* Fixing bolts, parts, mesh, all works, stuck item validation not verified
+* maintenance tab lacks some entries like valve lash, new parts that can wear down
