@@ -66,7 +66,6 @@ struct CarPart
 	uint32_t iInstalled = UINT_MAX;
 	uint32_t iBolts = UINT_MAX;
 	uint32_t iTightness = UINT_MAX;
-	uint32_t iBolted = UINT_MAX;
 	uint32_t iDamaged = UINT_MAX;
 	uint32_t iCorner = UINT_MAX;
 };

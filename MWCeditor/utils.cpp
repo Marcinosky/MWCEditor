@@ -1780,13 +1780,6 @@ bool SaveHasIssues(std::vector<Issue> &issues)
 			(carpart.iCorner != UINT_MAX && variables[carpart.iCorner].value.size() == 1)
 			)
 		{
-			if (carpart.iBolted != UINT_MAX &&
-				!variables[carpart.iBolted].value.empty() &&
-				variables[carpart.iBolted].value[0])
-			{
-				issues.push_back(Issue(carpart.iBolted, std::string(1, '\0')));
-			}
-
 			if (carpart.iTightness != UINT_MAX &&
 				variables[carpart.iTightness].value.size() >= sizeof(int) &&
 				*reinterpret_cast<const int*>(variables[carpart.iTightness].value.data()) != 0)
@@ -1807,16 +1800,16 @@ bool SaveHasIssues(std::vector<Issue> &issues)
 			}
 
 			static const std::wstring PartStr = L"PART";
-		const int iTransform = FindVariable(carpart.name);
-		if (iTransform >= 0)
-		{
-			std::string value = variables[iTransform].value;
-			if (value.size() > 41 && BinStrToWStr(value.substr(41)) != PartStr)
-				issues.push_back(Issue(
-					iTransform,
-					value.replace(41, value.size() - 41, WStrToBinStr(PartStr))
-				));
-		}
+			const int iTransform = FindVariable(carpart.name);
+			if (iTransform >= 0)
+			{
+				std::string value = variables[iTransform].value;
+				if (value.size() > 41 && BinStrToWStr(value.substr(41)) != PartStr)
+					issues.push_back(Issue(
+						iTransform,
+						value.replace(41, value.size() - 41, WStrToBinStr(PartStr))
+					));
+			}
 		}
 	}
 	const int iTime = FindVariable(L"worldtime");
@@ -1854,6 +1847,19 @@ inline bool PartIsStuck(std::wstring &stuckStr, const std::vector<uint32_t> &bol
 		return TRUE;
 	}
 	return FALSE;
+}
+
+static bool PartIsDamaged(const CarPart* part)
+{
+	if (!part || part->iDamaged == UINT_MAX)
+		return FALSE;
+
+	const auto& wearValue = variables[part->iDamaged].value;
+	if (wearValue.size() < sizeof(float))
+		return FALSE;
+
+	const float wear = BinToFloat(wearValue);
+	return wear < 5.f;
 }
 
 static uint32_t GetIndexForBase(const std::vector<uint32_t>& indices, const std::wstring& identifier, const std::wstring& base)
@@ -1957,17 +1963,15 @@ void PopulateCarparts()
 			part.displayName = (resolution.displayLabel.empty() ? base : resolution.displayLabel) + suffix;
 
 			if (buckets.size() > 0)
-				part.iBolted = GetIndexForBase(buckets[0], partIdentifiers[0], base);
+				part.iBolts = GetIndexForBase(buckets[0], partIdentifiers[0], base);
 			if (buckets.size() > 1)
-				part.iBolts = GetIndexForBase(buckets[1], partIdentifiers[1], base);
+				part.iDamaged = GetIndexForBase(buckets[1], partIdentifiers[1], base);
 			if (buckets.size() > 2)
-				part.iDamaged = GetIndexForBase(buckets[2], partIdentifiers[2], base);
+				part.iInstalled = GetIndexForBase(buckets[2], partIdentifiers[2], base);
 			if (buckets.size() > 3)
-				part.iInstalled = GetIndexForBase(buckets[3], partIdentifiers[3], base);
+				part.iTightness = GetIndexForBase(buckets[3], partIdentifiers[3], base);
 			if (buckets.size() > 4)
-				part.iTightness = GetIndexForBase(buckets[4], partIdentifiers[4], base);
-			if (buckets.size() > 5)
-				part.iCorner = GetIndexForBase(buckets[5], partIdentifiers[5], base);
+				part.iCorner = GetIndexForBase(buckets[4], partIdentifiers[4], base);
 
 			carparts.push_back(part);
 		}
@@ -2053,10 +2057,9 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 	if (installed && !(part->iCorner != UINT_MAX && variables[part->iCorner].value.size() == 1))
 		ov->numInstalled++;
 
-
-	if (part->iDamaged != UINT_MAX)
-		if (variables[part->iDamaged].value[0] == 0x01)
-			ov->numDamaged++;
+	const bool damaged = PartIsDamaged(part);
+	if (damaged)
+		ov->numDamaged++;
 
 	lvi.mask = LVIF_TEXT | LVIF_STATE | LVIF_PARAM; lvi.state = 0; lvi.stateMask = 0;
 	lvi.iItem = item; lvi.iSubItem = 0; lvi.pszText = (LPWSTR)(part->displayName.empty() ? part->name.c_str() : part->displayName.c_str()); lvi.lParam = item;
@@ -2066,7 +2069,7 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 	lvi.iItem = item; lvi.iSubItem = 1; lvi.pszText = (LPWSTR)boltStr.c_str();
 	SendMessage(hList3, LVM_SETITEM, 0, (LPARAM)&lvi);
 
-	lvi.iItem = item; lvi.iSubItem = 2; lvi.pszText = (LPWSTR)((part->iDamaged == UINT_MAX) ? BListSymbols[0] : ((variables[part->iDamaged].value[0] == 0x01) ? BListSymbols[1] : BListSymbols[0])).c_str();
+	lvi.iItem = item; lvi.iSubItem = 2; lvi.pszText = (LPWSTR)((part->iDamaged == UINT_MAX) ? BListSymbols[0] : (damaged ? BListSymbols[1] : BListSymbols[0])).c_str();
 	SendMessage(hList3, LVM_SETITEM, 0, (LPARAM)&lvi);
 
 	std::wstring installedStr;
@@ -2449,11 +2452,6 @@ void BatchProcessUninstall()
 			UpdateValue(L"0", carparts[i].iInstalled);
 		}
 
-		if (carparts[i].iBolted != UINT_MAX)
-		{
-			UpdateValue(bools[0], carparts[i].iBolted);
-		}
-
 		if (carparts[i].iTightness != UINT_MAX)
 		{
 			UpdateValue(L"0", carparts[i].iTightness);
@@ -2540,8 +2538,9 @@ void BatchProcessDamage(bool all)
 			}
 			if (aid >= 1 || all)
 			{
-				if (variables[carparts[i].iDamaged].value[0] == 0x01)
-					UpdateValue(bools[0], carparts[i].iDamaged);
+				const auto& wearValue = variables[carparts[i].iDamaged].value;
+				if (wearValue.size() >= sizeof(float) && BinToFloat(wearValue) < 5.f)
+					UpdateValue(L"100", carparts[i].iDamaged);
 			}
 		}
 	}
@@ -2595,7 +2594,6 @@ void BatchProcessBolts(bool fix)
 						}
 					}
 
-					if (carparts[i].iBolted != UINT_MAX) UpdateValue(bools[fix], carparts[i].iBolted);
 					UpdateValue(L"", carparts[i].iBolts, BoltsToBin(boltlist));
 					UpdateValue(std::to_wstring(tightness), carparts[i].iTightness);
 				}
@@ -2644,7 +2642,7 @@ void BatchProcessWiring()
 				InstalledParts.push_back(i);
 			}
 				
-			// We only set bolted to true when there's also bolts present
+			// Ensure wiring parts get fully tightened when bolts are present
 			if (carparts[i].iTightness != UINT_MAX && carparts[i].iBolts != UINT_MAX)
 			{
 				uint32_t bolts = 0, maxbolts = 0;
@@ -2657,7 +2655,6 @@ void BatchProcessWiring()
 						boltlist.push_back(8);
 					int tightness = static_cast<int32_t>(boltlist.size()) * 8;
 
-					if (carparts[i].iBolted != UINT_MAX) UpdateValue(bools[TRUE], carparts[i].iBolted);
 					UpdateValue(L"", carparts[i].iBolts, BoltsToBin(boltlist));
 					UpdateValue(std::to_wstring(tightness), carparts[i].iTightness);
 				}
