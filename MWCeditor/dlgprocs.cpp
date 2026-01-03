@@ -80,16 +80,30 @@ bool MatchMaintenancePattern(const std::wstring& pattern, const std::wstring& ke
 
 std::unordered_map<std::wstring, bool> aidInstallCache;
 
-bool IsAidKeyInstalled(const std::wstring& aidKey, const VariableLookupMap& variableLookup)
+bool IsPartInstalledByAidKey(const std::wstring& aidKey, const VariableLookupMap& variableLookup)
 {
 	auto cacheIt = aidInstallCache.find(aidKey);
 	if (cacheIt != aidInstallCache.end())
 		return cacheIt->second;
 
 	bool installed = FALSE;
+
 	auto lookupIt = variableLookup.find(aidKey);
 	if (lookupIt != variableLookup.end())
+	{
 		installed = IsAidInstalled(variables[lookupIt->second]);
+	}
+	else if (aidKey.size() > 3 && aidKey.compare(aidKey.size() - 3, 3, L"aid") == 0)
+	{
+		const std::wstring partKey = aidKey.substr(0, aidKey.size() - 3);
+		const auto partIt = std::find_if(carparts.begin(), carparts.end(), [&](const CarPart& part)
+			{
+				return part.name == partKey;
+			});
+
+		if (partIt != carparts.end() && partIt->iInstalled != UINT_MAX)
+			installed = IsAidInstalled(variables[partIt->iInstalled]);
+	}
 
 	aidInstallCache.emplace(aidKey, installed);
 	return installed;
@@ -121,7 +135,7 @@ bool HasInstalledAidSibling(const std::wstring& key, const VariableLookupMap& va
 	const std::wstring prefix = key.substr(0, digitStart);
 	const std::wstring aidKey = prefix + digits + L"aid";
 
-	return IsAidKeyInstalled(aidKey, variableLookup);
+	return IsPartInstalledByAidKey(aidKey, variableLookup);
 }
 
 bool IsMaintenanceVariableRelevant(const std::wstring& key, const std::wstring& pattern, const VariableLookupMap& variableLookup)
@@ -131,15 +145,15 @@ bool IsMaintenanceVariableRelevant(const std::wstring& key, const std::wstring& 
 
 	const size_t wildcardPos = pattern.find(L'*');
 	if (wildcardPos != std::wstring::npos)
-	{
-		std::wstring digits;
-		if (!MatchMaintenancePattern(pattern, key, MinAidDigits, MaxAidDigits, digits))
-			return FALSE;
+		{
+			std::wstring digits;
+			if (!MatchMaintenancePattern(pattern, key, MinAidDigits, MaxAidDigits, digits))
+				return FALSE;
 
-		const std::wstring prefix = pattern.substr(0, wildcardPos);
-		const std::wstring aidKey = prefix + digits + L"aid";
-		return IsAidKeyInstalled(aidKey, variableLookup);
-	}
+			const std::wstring prefix = pattern.substr(0, wildcardPos);
+			const std::wstring aidKey = prefix + digits + L"aid";
+			return IsPartInstalledByAidKey(aidKey, variableLookup);
+		}
 
 	const auto partIt = std::find_if(carparts.begin(), carparts.end(), [&](const CarPart& part)
 		{
@@ -175,7 +189,7 @@ std::vector<std::wstring> CollectInstalledAidDigits(const std::wstring& pattern,
 		if (!MatchMaintenancePattern(aidPattern, key, MinAidDigits, MaxAidDigits, instanceDigits))
 			continue;
 
-		if (IsAidKeyInstalled(key, variableLookup))
+		if (IsPartInstalledByAidKey(key, variableLookup))
 			digits.push_back(std::move(instanceDigits));
 	}
 
