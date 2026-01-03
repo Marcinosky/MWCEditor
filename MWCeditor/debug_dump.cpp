@@ -134,7 +134,7 @@ void DumpStateToJson(const std::wstring& tag)
 		file << L"      \"type_display\": "; WriteJsonString(file, var.GetTypeDisplayString()); file << L",\n";
 		file << L"      \"value_hex\": "; WriteJsonString(file, BytesToHex(var.value)); file << L",\n";
 		file << L"      \"static_value_hex\": "; WriteJsonString(file, BytesToHex(var.static_value)); file << L",\n";
-		file << L"      \"static_raw_key\": "; WriteJsonString(file, var.static_raw_key.empty() ? L\"\" : var.static_raw_key); file << L"\n";
+		file << L"      \"static_raw_key\": "; WriteJsonString(file, var.static_raw_key.empty() ? std::wstring() : var.static_raw_key); file << L"\n";
 		file << L"    }" << (i + 1 < variables.size() ? L"," : L"") << L"\n";
 	}
 	file << L"  ],\n";
