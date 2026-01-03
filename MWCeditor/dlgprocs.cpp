@@ -32,27 +32,84 @@
 namespace
 {
 
-std::wstring ExtractAidDigits(const std::wstring& key, const std::wstring& prefix)
+constexpr size_t MinAidDigits = 1;
+constexpr size_t MaxAidDigits = 2;
+
+bool MatchMaintenancePattern(const std::wstring& pattern, const std::wstring& key, size_t minDigits, size_t maxDigits, std::wstring& outDigits)
 {
+	outDigits.clear();
+
+	const size_t wildcardPos = pattern.find(L'*');
+	if (wildcardPos == std::wstring::npos)
+	{
+		if (pattern == key)
+		{
+			outDigits = L"";
+			return TRUE;
+		}
+		return FALSE;
+	}
+
+	const std::wstring prefix = pattern.substr(0, wildcardPos);
+	const std::wstring suffix = pattern.substr(wildcardPos + 1);
+
 	if (!StartsWithStr(key, prefix))
-		return L"";
+		return FALSE;
+
+	if (key.size() < prefix.size() + suffix.size() + minDigits)
+		return FALSE;
+
+	if (suffix.size() > key.size() - prefix.size())
+		return FALSE;
+
+	if (!suffix.empty() && key.compare(key.size() - suffix.size(), suffix.size(), suffix) != 0)
+		return FALSE;
 
 	const size_t digitStart = prefix.size();
-	size_t digitEnd = digitStart;
+	const size_t digitCount = key.size() - prefix.size() - suffix.size();
+	if (digitCount < minDigits || digitCount > maxDigits)
+		return FALSE;
 
-	while (digitEnd < key.size() && iswdigit(key[digitEnd]))
-		digitEnd++;
+	const std::wstring digits = key.substr(digitStart, digitCount);
+	if (!std::all_of(digits.begin(), digits.end(), iswdigit))
+		return FALSE;
 
-	if (digitEnd == digitStart)
-		return L"";
-
-	if (digitEnd >= key.size() || key.substr(digitEnd) != L"aid")
-		return L"";
-
-	return key.substr(digitStart, digitEnd - digitStart);
+	outDigits = digits;
+	return TRUE;
 }
 
-bool HasInstalledAidSibling(const std::wstring& key)
+std::unordered_map<std::wstring, bool> aidInstallCache;
+
+bool IsPartInstalledByAidKey(const std::wstring& aidKey, const VariableLookupMap& variableLookup)
+{
+	auto cacheIt = aidInstallCache.find(aidKey);
+	if (cacheIt != aidInstallCache.end())
+		return cacheIt->second;
+
+	bool installed = FALSE;
+
+	auto lookupIt = variableLookup.find(aidKey);
+	if (lookupIt != variableLookup.end())
+	{
+		installed = IsAidInstalled(variables[lookupIt->second]);
+	}
+	else if (aidKey.size() > 3 && aidKey.compare(aidKey.size() - 3, 3, L"aid") == 0)
+	{
+		const std::wstring partKey = aidKey.substr(0, aidKey.size() - 3);
+		const auto partIt = std::find_if(carparts.begin(), carparts.end(), [&](const CarPart& part)
+			{
+				return part.name == partKey;
+			});
+
+		if (partIt != carparts.end() && partIt->iInstalled != UINT_MAX)
+			installed = IsAidInstalled(variables[partIt->iInstalled]);
+	}
+
+	aidInstallCache.emplace(aidKey, installed);
+	return installed;
+}
+
+bool HasInstalledAidSibling(const std::wstring& key, const VariableLookupMap& variableLookup)
 {
 	size_t digitStart = std::wstring::npos;
 	size_t digitEnd = std::wstring::npos;
@@ -70,57 +127,56 @@ bool HasInstalledAidSibling(const std::wstring& key)
 	if (digitStart == std::wstring::npos || digitEnd == std::wstring::npos)
 		return FALSE;
 
+	const size_t digitCount = digitEnd - digitStart;
+	if (digitCount < MinAidDigits || digitCount > MaxAidDigits)
+		return FALSE;
+
 	const std::wstring digits = key.substr(digitStart, digitEnd - digitStart);
 	const std::wstring prefix = key.substr(0, digitStart);
 	const std::wstring aidKey = prefix + digits + L"aid";
 
-	const auto it = std::find_if(variables.begin(), variables.end(), [&](const Variable& var)
-		{
-			return var.key == aidKey;
-		});
-
-	return it != variables.end() && IsAidInstalled(*it);
+	return IsPartInstalledByAidKey(aidKey, variableLookup);
 }
 
-bool IsMaintenanceVariableRelevant(const std::wstring& key)
+bool IsMaintenanceVariableRelevant(const std::wstring& key, const std::wstring& pattern, const VariableLookupMap& variableLookup)
 {
 	if (StartsWithStr(key, L"wheel") && ContainsStr(key, L"damagevector"))
 		return TRUE;
 
-	if (carparts.empty())
-		return TRUE;
-
-	bool matchedPart = FALSE;
-	for (const auto& part : carparts)
+	const size_t wildcardPos = pattern.find(L'*');
+	if (wildcardPos != std::wstring::npos)
 	{
-		if (!StartsWithStr(key, part.name))
-			continue;
-
-		matchedPart = TRUE;
-		if (part.iInstalled == UINT_MAX)
+		std::wstring digits;
+		if (!MatchMaintenancePattern(pattern, key, MinAidDigits, MaxAidDigits, digits))
 			return FALSE;
 
-		return IsAidInstalled(variables[part.iInstalled]);
+		const std::wstring prefix = pattern.substr(0, wildcardPos);
+		const std::wstring aidKey = prefix + digits + L"aid";
+		return IsPartInstalledByAidKey(aidKey, variableLookup);
 	}
 
-	if (!matchedPart)
-		return HasInstalledAidSibling(key);
-
-	return FALSE;
+	return HasInstalledAidSibling(key, variableLookup);
 }
 
-std::vector<std::wstring> CollectInstalledAidDigits(const std::wstring& prefix, const VariableLookupMap& variableLookup)
+std::vector<std::wstring> CollectInstalledAidDigits(const std::wstring& pattern, const VariableLookupMap& variableLookup)
 {
 	std::vector<std::wstring> digits;
+
+	const size_t wildcardPos = pattern.find(L'*');
+	if (wildcardPos == std::wstring::npos)
+		return digits;
+
+	const std::wstring prefix = pattern.substr(0, wildcardPos);
+	const std::wstring aidPattern = prefix + L"*aid";
 
 	for (const auto& entry : variableLookup)
 	{
 		const std::wstring& key = entry.first;
-		std::wstring instanceDigits = ExtractAidDigits(key, prefix);
-		if (instanceDigits.empty())
+		std::wstring instanceDigits;
+		if (!MatchMaintenancePattern(aidPattern, key, MinAidDigits, MaxAidDigits, instanceDigits))
 			continue;
 
-		if (IsAidInstalled(variables[entry.second]))
+		if (IsPartInstalledByAidKey(key, variableLookup))
 			digits.push_back(std::move(instanceDigits));
 	}
 
@@ -158,7 +214,7 @@ void BindMaintenanceProperty(CarProperty& property, const VariableLookupMap& var
 	if (lookupIt == variableLookup.end())
 		return;
 
-	if (!IsMaintenanceVariableRelevant(property.lookupname))
+	if (!IsMaintenanceVariableRelevant(property.lookupname, property.lookupname, variableLookup))
 		return;
 
 	property.index = lookupIt->second;
@@ -173,7 +229,7 @@ void ExpandMaintenanceProperty(const CarProperty& baseProperty, const VariableLo
 	const std::wstring prefix = baseProperty.lookupname.substr(0, wildcardPos);
 	const std::wstring suffix = baseProperty.lookupname.substr(wildcardPos + 1);
 
-	const auto installedDigits = CollectInstalledAidDigits(prefix, variableLookup);
+	const auto installedDigits = CollectInstalledAidDigits(baseProperty.lookupname, variableLookup);
 	for (const auto& digits : installedDigits)
 	{
 		std::wstring resolvedKey = prefix + digits + suffix;
@@ -181,7 +237,7 @@ void ExpandMaintenanceProperty(const CarProperty& baseProperty, const VariableLo
 		if (lookupIt == variableLookup.end())
 			continue;
 
-		if (!IsMaintenanceVariableRelevant(resolvedKey))
+		if (!IsMaintenanceVariableRelevant(resolvedKey, baseProperty.lookupname, variableLookup))
 			continue;
 
 		CarProperty instanceProperty = baseProperty;
@@ -194,6 +250,8 @@ void ExpandMaintenanceProperty(const CarProperty& baseProperty, const VariableLo
 
 void ResolveMaintenanceProperties(const VariableLookupMap& variableLookup, size_t baseCount)
 {
+	aidInstallCache.clear();
+
 	std::vector<CarProperty> expandedProperties;
 
 	for (size_t i = 0; i < baseCount; i++)
@@ -1141,7 +1199,7 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 			if (maintenanceLookupNames.find(variable.key) != maintenanceLookupNames.end())
 				continue;
 
-			if (!IsMaintenanceVariableRelevant(variable.key))
+			if (!IsMaintenanceVariableRelevant(variable.key, variable.key, variableLookup))
 				continue;
 
 			std::wstring displayname = variable.key;
