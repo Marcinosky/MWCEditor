@@ -13,7 +13,7 @@
 #include <fcntl.h> // Console
 #include <iostream> // Console
 #include <set>
-
+#include <array>
 #include <windows.h>
 #include <cstdio>
 
@@ -1854,6 +1854,68 @@ static bool PartIsDamaged(const CarPart* part)
 	if (!part || part->iDamaged == UINT_MAX)
 		return FALSE;
 
+	static const std::array<std::wstring, 1> InvertedWearPrefixes = {
+		L"oilfiltr"
+	};
+
+	const auto ToLower = [](std::wstring str)
+		{
+			std::transform(str.begin(), str.end(), str.begin(), ::towlower);
+			return str;
+		};
+
+	const auto IsInvertedWearKey = [&](const std::wstring& wearKey, const CarPart* targetPart)
+		{
+			const std::wstring loweredWearKey = ToLower(wearKey);
+
+			const auto HasWeaSuffix = [](const std::wstring& key)
+				{
+					static const std::wstring wea = L"wea";
+					return key.size() >= wea.size() && key.compare(key.size() - wea.size(), wea.size(), wea) == 0;
+				};
+
+			const auto LoweredName = [&]()
+				{
+					return targetPart ? ToLower(targetPart->name) : std::wstring();
+				}();
+
+			for (const auto& prefix : InvertedWearPrefixes)
+			{
+				const std::wstring loweredPrefix = ToLower(prefix);
+
+				if (StartsWithStr(loweredWearKey, loweredPrefix) && HasWeaSuffix(loweredWearKey))
+					return true;
+
+				if (!LoweredName.empty() && StartsWithStr(LoweredName, loweredPrefix))
+					return true;
+			}
+
+			return false;
+		};
+
+	const auto HasNoMountedTire = [&](const CarPart* targetPart)
+		{
+			if (!targetPart)
+				return false;
+
+			const std::wstring ttKey = targetPart->name + L"tt";
+			const int ttIndex = FindVariable(ttKey);
+			if (ttIndex < 0)
+				return false;
+
+			const auto& ttValue = variables[ttIndex].value;
+			if (ttValue.empty())
+				return false;
+
+			if (ttValue.size() >= sizeof(int))
+			{
+				const int tireState = *reinterpret_cast<const int*>(ttValue.data());
+				return tireState == 0;
+			}
+
+			return static_cast<unsigned char>(ttValue.front()) == 0;
+		};
+
 	const auto& var = variables[part->iDamaged];
 	const auto& wearValue = var.value;
 
@@ -1870,28 +1932,14 @@ static bool PartIsDamaged(const CarPart* part)
 
 	const float wear = BinToFloat(wearValue);
 
-#ifdef _DEBUG
-	{
-		std::wstring msg =
-			L"[DAMAGED?] index=" + std::to_wstring(part->iDamaged) +
-			L" key=" + var.key +
-			L" wear=" + std::to_wstring(wear);
+	float effectiveWear = wear;
+	if (IsInvertedWearKey(var.key, part))
+		effectiveWear = 100.f - wear;
 
-		msg += L" raw=0x";
-		static const wchar_t* hex = L"0123456789ABCDEF";
+	if (HasNoMountedTire(part))
+		return FALSE;
 
-		for (unsigned char c : wearValue)
-		{
-			msg += hex[(c >> 4) & 0xF];
-			msg += hex[c & 0xF];
-		}
-
-		msg += L"\n";
-		LOG(msg);
-	}
-#endif
-
-	return wear < 11.f;
+	return effectiveWear < 11.f; // taken from in-game, can't guarantee its the same for all items
 }
 
 static uint32_t GetIndexForBase(const std::vector<uint32_t>& indices, const std::wstring& identifier, const std::wstring& base)
