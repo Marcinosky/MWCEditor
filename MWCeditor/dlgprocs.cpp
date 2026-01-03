@@ -145,27 +145,14 @@ bool IsMaintenanceVariableRelevant(const std::wstring& key, const std::wstring& 
 
 	const size_t wildcardPos = pattern.find(L'*');
 	if (wildcardPos != std::wstring::npos)
-		{
-			std::wstring digits;
-			if (!MatchMaintenancePattern(pattern, key, MinAidDigits, MaxAidDigits, digits))
-				return FALSE;
-
-			const std::wstring prefix = pattern.substr(0, wildcardPos);
-			const std::wstring aidKey = prefix + digits + L"aid";
-			return IsPartInstalledByAidKey(aidKey, variableLookup);
-		}
-
-	const auto partIt = std::find_if(carparts.begin(), carparts.end(), [&](const CarPart& part)
-		{
-			return part.name == key;
-		});
-
-	if (partIt != carparts.end())
 	{
-		if (partIt->iInstalled == UINT_MAX)
+		std::wstring digits;
+		if (!MatchMaintenancePattern(pattern, key, MinAidDigits, MaxAidDigits, digits))
 			return FALSE;
 
-		return IsAidInstalled(variables[partIt->iInstalled]);
+		const std::wstring prefix = pattern.substr(0, wildcardPos);
+		const std::wstring aidKey = prefix + digits + L"aid";
+		return IsPartInstalledByAidKey(aidKey, variableLookup);
 	}
 
 	return HasInstalledAidSibling(key, variableLookup);
