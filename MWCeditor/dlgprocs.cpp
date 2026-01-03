@@ -99,7 +99,18 @@ std::wstring BuildInstanceDisplayName(const CarProperty& baseProperty, const std
 	if (digits.empty())
 		return baseProperty.displayname;
 
-	std::wstring instanceLabel = prefix + digits;
+	const auto resolveInstanceLabel = [&](const std::wstring& partKey) -> std::wstring
+	{
+		for (const auto& part : carparts)
+		{
+			if (StartsWithStr(part.name, partKey))
+				return part.displayName.empty() ? part.name : part.displayName;
+		}
+		return partKey;
+	};
+
+	const std::wstring partKey = prefix + digits;
+	const std::wstring instanceLabel = resolveInstanceLabel(partKey);
 	return baseProperty.displayname + L" (" + instanceLabel + L")";
 }
 
