@@ -1,10 +1,22 @@
-# MWCEditor
+## MWCEditor
 
 > MWCeditor - a save editor by durkhaz 		updated by Marcinoski
 
 > For the (cool) game "My Winter Car"			by Amistech Games
 
 
+# Disclaimer - WIP
+The project is still under development, i released it with most of functionalities restored, but some things can still be broken, texts are outdated and some important warnings are probably missing, use on your own risk.
+
+on my radar:
+- valve lash value and some new part conditions are missing from the report, can be changed manually
+- wiring is not handled at all, will do this later as i dont want to spoil the build for myself, sorry
+- old texts that need updating, some additional warnings
+- time values from weather and time combo are off, weather doesn't work
+- spawning items not tested, item tables in the ini not updated for the new game and i would appreciate if anyone - took a crack at them
+
+
+## FAQ
 
 **Q: What does it do?**
 
@@ -66,3 +78,4 @@ AppData\\LocalLow\\Amistech\\My Winter Car. The tool should open the correct fol
 * Rivett report works, bolt tightness can be inspected
 * Fixing bolts, parts, mesh, all works, stuck item validation not verified
 * maintenance tab lacks some entries like valve lash, new parts that can wear down
+* wiring not updated at all
