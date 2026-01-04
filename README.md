@@ -13,7 +13,7 @@ on my radar:
 - wiring is not handled at all, will do this later as i dont want to spoil the build for myself, sorry
 - old texts that need updating, some additional warnings
 - time values from weather and time combo are off, weather doesn't work
-- spawning items not tested, item tables in the ini not updated for the new game and i would appreciate if anyone - took a crack at them
+- spawning items not tested, item tables in the ini not updated for the new game and i would appreciate if anyone took a crack at them
 
 
 ## FAQ
