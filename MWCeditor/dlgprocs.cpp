@@ -77,6 +77,23 @@ bool ParseValveValue(const std::wstring& text, float& outValue)
 	return endPtr != trimmed.c_str();
 }
 
+std::wstring FormatValveValueForDisplay(const std::wstring& raw)
+{
+	float value = 0.0f;
+	if (!ParseValveValue(raw, value))
+		return raw;
+
+	std::wstring text = std::to_wstring(value);
+	return *TruncFloatStr(text);
+}
+
+std::wstring FormatValveValueForStorage(float value)
+{
+	std::wstring text = std::to_wstring(value);
+	TruncFloatStr(text);
+	return L"float(" + text + L")";
+}
+
 std::vector<std::wstring> DecodeStringList(const Variable& variable)
 {
 	std::vector<std::wstring> values;
@@ -151,7 +168,7 @@ std::wstring GetValveDisplayValue(const CarProperty& property)
 	if (property.elementIndex >= values.size())
 		return L"";
 
-	return values[property.elementIndex];
+	return FormatValveValueForDisplay(values[property.elementIndex]);
 }
 
 bool MatchMaintenancePattern(const std::wstring& pattern, const std::wstring& key, size_t minDigits, size_t maxDigits, std::wstring& outDigits)
@@ -690,7 +707,16 @@ void UpdateRow(HWND hwnd, uint32_t pIndex, int nRow, std::wstring str = L"")
 			if (sValue.empty())
 				sValue = values[carproperties[pIndex].elementIndex];
 
-			values[carproperties[pIndex].elementIndex] = sValue;
+			float valveValue = 0.0f;
+			if (ParseValveValue(sValue, valveValue))
+			{
+				values[carproperties[pIndex].elementIndex] = FormatValveValueForStorage(valveValue);
+				sValue = FormatValveValueForDisplay(values[carproperties[pIndex].elementIndex]);
+			}
+			else
+			{
+				values[carproperties[pIndex].elementIndex] = sValue;
+			}
 			binValue = EncodeStringList(values);
 			UpdateValue(L"", carproperties[pIndex].index, binValue);
 		}
