@@ -38,6 +38,8 @@ constexpr size_t MinAidDigits = 1;
 constexpr size_t MaxAidDigits = 2;
 constexpr bool ValveListAlternatingLayout = false;
 constexpr float ValveRecommendedDefault = 5.0f;
+constexpr size_t ValveDigitsMin = 1;
+constexpr size_t ValveDigitsMax = 2;
 
 enum class ValveType
 {
@@ -275,6 +277,35 @@ bool IsMaintenanceVariableRelevant(const std::wstring& key, const std::wstring& 
 	return HasInstalledAidSibling(key, variableLookup);
 }
 
+bool TryBindStringListProperty(CarProperty& property, const VariableLookupMap& variableLookup)
+{
+	std::wstring digits;
+
+	if (property.lookupname.find(L'*') != std::wstring::npos)
+	{
+		for (const auto& entry : variableLookup)
+		{
+			if (!MatchMaintenancePattern(property.lookupname, entry.first, ValveDigitsMin, ValveDigitsMax, digits))
+				continue;
+
+			property.lookupname = entry.first;
+			property.index = entry.second;
+			return TRUE;
+		}
+	}
+	else
+	{
+		auto lookupIt = variableLookup.find(property.lookupname);
+		if (lookupIt != variableLookup.end())
+		{
+			property.index = lookupIt->second;
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
 std::vector<std::wstring> CollectInstalledAidDigits(const std::wstring& pattern, const VariableLookupMap& variableLookup)
 {
 	std::vector<std::wstring> digits;
@@ -327,6 +358,12 @@ std::wstring BuildInstanceDisplayName(const CarProperty& baseProperty, const std
 
 void BindMaintenanceProperty(CarProperty& property, const VariableLookupMap& variableLookup)
 {
+	if (property.datatype == MaintenanceDataType_StringList)
+	{
+		TryBindStringListProperty(property, variableLookup);
+		return;
+	}
+
 	auto lookupIt = variableLookup.find(property.lookupname);
 	if (lookupIt == variableLookup.end())
 		return;
@@ -374,7 +411,7 @@ void ResolveMaintenanceProperties(const VariableLookupMap& variableLookup, size_
 	for (size_t i = 0; i < baseCount; i++)
 	{
 		auto& property = carproperties[i];
-		if (property.lookupname.find(L'*') != std::wstring::npos)
+		if (property.datatype != MaintenanceDataType_StringList && property.lookupname.find(L'*') != std::wstring::npos)
 			ExpandMaintenanceProperty(property, variableLookup, expandedProperties);
 		else
 			BindMaintenanceProperty(property, variableLookup);
