@@ -1353,7 +1353,7 @@ INT_PTR CALLBACK PropertyListProc(HWND hwnd, uint32_t Message, WPARAM wParam, LP
 			StaticRekt.right -= 2 + StaticRekt.left;
 
 			// Fetch the value and create edit-box
-			std::wstring vStr = variables[carproperties[pIndex].index].GetDisplayString();
+			std::wstring vStr = carproperties[pIndex].elementIndex == UINT_MAX ? variables[carproperties[pIndex].index].GetDisplayString() : GetValveDisplayValue(carproperties[pIndex]);
 			hEditValue = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, vStr.c_str(), WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, StaticRekt.left, StaticRekt.top, StaticRekt.right, StaticRekt.bottom, hwnd, (HMENU)IDC_PLEDIT, hInst, NULL);
 			SendMessage(hEditValue, WM_SETFONT, (WPARAM)hListFont, TRUE);
 			SendMessage(hEditValue, EM_SETLIMITTEXT, 16, 0);
