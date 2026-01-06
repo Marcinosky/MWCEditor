@@ -36,7 +36,7 @@ namespace
 
 constexpr size_t MinAidDigits = 1;
 constexpr size_t MaxAidDigits = 2;
-constexpr bool ValveListAlternatingLayout = false;
+constexpr bool ValveListAlternatingLayout = true;
 
 enum class ValveType
 {

@@ -2701,7 +2701,7 @@ void BatchProcessBolts(bool fix)
 void BatchProcessWiring()
 {
 	static const std::wstring WiringIdentifier = L"wiring";
-	static const std::vector<std::wstring> WiringRequirements = { L"wiringbatteryminus", L"wiringbatteryplus", L"wiringstarter"};
+	static const std::vector<std::wstring> WiringRequirements = { L"wiringbatteryground", L"wiringbatteryharness", L"wiringbatterystarter"};
 	std::vector<uint32_t> InstalledParts;
 
 	// We don't wire the car when there's no battery or starter installed
