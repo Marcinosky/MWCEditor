@@ -37,8 +37,6 @@ namespace
 constexpr size_t MinAidDigits = 1;
 constexpr size_t MaxAidDigits = 2;
 constexpr bool ValveListAlternatingLayout = false;
-constexpr size_t ValveDigitsMin = 1;
-constexpr size_t ValveDigitsMax = 2;
 
 enum class ValveType
 {
@@ -301,7 +299,7 @@ bool TryBindStringListProperty(CarProperty& property, const VariableLookupMap& v
 	{
 		for (const auto& entry : variableLookup)
 		{
-			if (!MatchMaintenancePattern(property.lookupname, entry.first, ValveDigitsMin, ValveDigitsMax, digits))
+			if (!MatchMaintenancePattern(property.lookupname, entry.first, MinAidDigits, MaxAidDigits, digits))
 				continue;
 
 			property.lookupname = entry.first;
