@@ -276,6 +276,8 @@ bool IsMaintenanceVariableRelevant(const std::wstring& key, const std::wstring& 
 	if (StartsWithStr(key, L"wheel") && ContainsStr(key, L"damagevector"))
 		return TRUE;
 
+	const bool variableExists = variableLookup.find(key) != variableLookup.end();
+
 	const size_t wildcardPos = pattern.find(L'*');
 	if (wildcardPos != std::wstring::npos)
 	{
@@ -285,8 +287,14 @@ bool IsMaintenanceVariableRelevant(const std::wstring& key, const std::wstring& 
 
 		const std::wstring prefix = pattern.substr(0, wildcardPos);
 		const std::wstring aidKey = prefix + digits + L"aid";
-		return IsPartInstalledByAidKey(aidKey, variableLookup);
+		if (IsPartInstalledByAidKey(aidKey, variableLookup))
+			return TRUE;
+
+		return variableExists;
 	}
+
+	if (variableExists)
+		return TRUE;
 
 	return HasInstalledAidSibling(key, variableLookup);
 }
@@ -340,6 +348,16 @@ std::vector<std::wstring> CollectInstalledAidDigits(const std::wstring& pattern,
 
 		if (IsPartInstalledByAidKey(key, variableLookup))
 			digits.push_back(std::move(instanceDigits));
+	}
+
+	for (const auto& entry : variableLookup)
+	{
+		const std::wstring& key = entry.first;
+		std::wstring instanceDigits;
+		if (!MatchMaintenancePattern(pattern, key, MinAidDigits, MaxAidDigits, instanceDigits))
+			continue;
+
+		digits.push_back(std::move(instanceDigits));
 	}
 
 	std::sort(digits.begin(), digits.end(), [](const std::wstring& lhs, const std::wstring& rhs)
@@ -1487,6 +1505,19 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 			// But make sure it has an index set, otherwise it doesn't exist in the variable vector
 			if (carproperties[i].index != UINT_MAX)
 			{
+
+				LOG(
+					L"[MAINT:ROW:BEGIN]"
+					L" i=" + std::to_wstring(i) +
+					L" RowID=" + std::to_wstring(RowID) +
+					L" offset=" + std::to_wstring(offset) +
+					L" name=" + carproperties[i].displayname +
+					L" lookup=" + carproperties[i].lookupname +
+					L" idx=" + std::to_wstring(carproperties[i].index) +
+					L" datatype=" + std::to_wstring((int)carproperties[i].datatype) +
+					L" elemIdx=" + (carproperties[i].elementIndex == UINT_MAX ? L"UINT_MAX" : std::to_wstring(carproperties[i].elementIndex))
+				);
+
 				// Draw display text
 				std::wstring value;
 				COLORREF tColor;
@@ -1497,6 +1528,13 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 
 				bActionAvailable = GetStateLabelSpecs(&carproperties[i], value, tColor);
 
+				LOG(
+					L"[MAINT:ROW:STATE]"
+					L" lookup=" + carproperties[i].lookupname +
+					L" stateText=\"" + value + L"\"" +
+					L" action=" + (bActionAvailable ? L"YES" : L"NO")
+				);
+
 				HWND hDisplayState = CreateWindowEx(0, WC_STATIC, value.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 272, 0 + offset, 40, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_STATE + RowID) , hInst, NULL);
 				SendMessage(hDisplayState, WM_SETFONT, (WPARAM)hListFont, TRUE);
 
@@ -1504,6 +1542,12 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 				AllocWindowUserData(hDisplayState, (LONG_PTR)PropertyListControlProc, 0, tColor);
 
 				value = carproperties[i].elementIndex == UINT_MAX ? variables[carproperties[i].index].GetDisplayString() : GetValveDisplayValue(carproperties[i]);
+
+				LOG(
+					L"[MAINT:ROW:VALUE]"
+					L" lookup=" + carproperties[i].lookupname +
+					L" display=\"" + variables[carproperties[i].index].GetDisplayString() + L"\""
+				);
 				HWND hDisplayValue = CreateWindowEx(0, WC_STATIC, value.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 325, 0 + offset, 100, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_EDIT + RowID), hInst, NULL);
 				SendMessage(hDisplayValue, WM_SETFONT, (WPARAM)hListFont, TRUE);
 
@@ -1520,6 +1564,7 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 			}
 
 		}
+
 		// Apply size
 		PostMessage(hProperties, WM_UPDATESIZE, offset + 3, NULL);
 

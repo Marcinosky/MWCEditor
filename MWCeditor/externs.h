@@ -48,9 +48,9 @@ public:
 		m_fileStream.flush();
 	}
 
-	void Log(const std::wstring &str)
+	void Log(const std::wstring& str)
 	{
-		*this << GetTime() << str;
+		*this << GetTime() << str << L"\n";
 		m_fileStream.flush();
 	}
 };
