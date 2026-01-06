@@ -14,6 +14,7 @@
 #include <iostream> // Console
 #include <set>
 #include <array>
+#include <limits>
 #include <windows.h>
 #include <cstdio>
 
@@ -841,11 +842,17 @@ void FillVector(const std::vector<std::wstring> &params, const std::wstring &ide
 		auto datatype = static_cast<uint32_t>(::strtol(NarrowStr(params[2]).c_str(), NULL, 10));
 		std::string worst = !params[3].empty() ? Variable::ValueStrToBin(params[3], datatype) : "";
 		std::string optimum = !params[4].empty() ? Variable::ValueStrToBin(params[4], datatype) : "";
+		float recommendedValue = std::numeric_limits<float>::quiet_NaN();
+		if (params.size() == 6 && !params[5].empty())
+			recommendedValue = static_cast<float>(::wcstod(params[5].c_str(), NULL));
 
 		if (params.size() == 5)
-			carproperties.push_back(CarProperty(params[0], params[1], datatype, worst, optimum));
+			carproperties.push_back(CarProperty(params[0], params[1], datatype, worst, optimum, "", UINT_MAX, recommendedValue));
 		else if (params.size() == 6)
-			carproperties.push_back(CarProperty(params[0], params[1], datatype, worst, optimum, Variable::ValueStrToBin(params[5], datatype)));
+		{
+			auto recommendedBin = datatype == MaintenanceDataType_StringList ? std::string() : Variable::ValueStrToBin(params[5], datatype);
+			carproperties.push_back(CarProperty(params[0], params[1], datatype, worst, optimum, recommendedBin, UINT_MAX, recommendedValue));
+		}
 	}
 	else if (identifier == L"Event_Timetable")
 	{

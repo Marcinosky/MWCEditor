@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cwctype>
+#include <cmath>
+#include <limits>
 #include <utility>
 #include <unordered_set>
 
@@ -34,6 +36,121 @@ namespace
 
 constexpr size_t MinAidDigits = 1;
 constexpr size_t MaxAidDigits = 2;
+constexpr bool ValveListAlternatingLayout = false;
+constexpr float ValveRecommendedDefault = 5.0f;
+
+enum class ValveType
+{
+	Intake,
+	Exhaust
+};
+
+struct ValveEntry
+{
+	ValveType type;
+	uint32_t cylinder;
+	float value;
+};
+
+std::wstring TrimWhitespace(const std::wstring& in)
+{
+	std::wstring out;
+	out.reserve(in.size());
+	for (auto ch : in)
+	{
+		if (!iswspace(ch))
+			out.push_back(ch);
+	}
+	return out;
+}
+
+bool ParseValveValue(const std::wstring& text, float& outValue)
+{
+	auto trimmed = TrimWhitespace(text);
+	if (StartsWithStr(trimmed, L"float(") && trimmed.size() > 6 && trimmed.back() == L')')
+		trimmed = trimmed.substr(6, trimmed.size() - 7);
+
+	wchar_t* endPtr = nullptr;
+	outValue = static_cast<float>(::wcstod(trimmed.c_str(), &endPtr));
+	return endPtr != trimmed.c_str();
+}
+
+std::vector<std::wstring> DecodeStringList(const Variable& variable)
+{
+	std::vector<std::wstring> values;
+	if (variable.header.GetContainerType() != EntryContainer::List || variable.header.GetValueType() != EntryValue::String)
+		return values;
+
+	const std::string& bin = variable.value;
+	if (bin.size() < sizeof(int))
+		return values;
+
+	const int count = *reinterpret_cast<const int*>(bin.data());
+	size_t offset = sizeof(int);
+	for (int i = 0; i < count && offset < bin.size(); i++)
+	{
+		const uint8_t len = static_cast<uint8_t>(bin[offset]);
+		const size_t chunkSize = static_cast<size_t>(len) + 1;
+		if (offset + chunkSize > bin.size())
+			break;
+
+		values.push_back(BinStrToWStr(bin.substr(offset, chunkSize)));
+		offset += chunkSize;
+	}
+	return values;
+}
+
+std::string EncodeStringList(const std::vector<std::wstring>& values)
+{
+	std::string bin = IntToBin(static_cast<int>(values.size()));
+	for (const auto& value : values)
+		bin += WStrToBinStr(value);
+	return bin;
+}
+
+ValveEntry GetValveEntryForIndex(size_t index)
+{
+	ValveEntry entry{};
+	if (ValveListAlternatingLayout)
+	{
+		entry.type = (index % 2 == 0) ? ValveType::Intake : ValveType::Exhaust;
+		entry.cylinder = static_cast<uint32_t>(index / 2) + 1;
+	}
+	else
+	{
+		entry.type = (index < 4) ? ValveType::Intake : ValveType::Exhaust;
+		entry.cylinder = static_cast<uint32_t>((index % 4) + 1);
+	}
+	entry.value = std::numeric_limits<float>::quiet_NaN();
+	return entry;
+}
+
+std::wstring BuildValveDisplayName(const CarProperty& baseProperty, size_t listIndex)
+{
+	const ValveEntry entry = GetValveEntryForIndex(listIndex);
+	const std::wstring typeLabel = entry.type == ValveType::Intake ? L"Intake" : L"Exhaust";
+	return baseProperty.displayname + L" (" + typeLabel + L" cylinder " + std::to_wstring(entry.cylinder) + L")";
+}
+
+float ResolveValveRecommendedValue(const CarProperty& property)
+{
+	return std::isnan(property.recommendedValue) ? ValveRecommendedDefault : property.recommendedValue;
+}
+
+std::wstring GetValveDisplayValue(const CarProperty& property)
+{
+	if (property.elementIndex == UINT_MAX || property.index == UINT_MAX)
+		return L"";
+
+	if (variables[property.index].header.GetContainerType() != EntryContainer::List || variables[property.index].header.GetValueType() != EntryValue::String)
+		return variables[property.index].GetDisplayString();
+
+	auto values = DecodeStringList(variables[property.index]);
+	if (property.elementIndex >= values.size())
+		return L"";
+
+	return values[property.elementIndex];
+}
 
 bool MatchMaintenancePattern(const std::wstring& pattern, const std::wstring& key, size_t minDigits, size_t maxDigits, std::wstring& outDigits)
 {
@@ -261,6 +378,21 @@ void ResolveMaintenanceProperties(const VariableLookupMap& variableLookup, size_
 			ExpandMaintenanceProperty(property, variableLookup, expandedProperties);
 		else
 			BindMaintenanceProperty(property, variableLookup);
+
+		if (property.datatype == MaintenanceDataType_StringList && property.index != UINT_MAX)
+		{
+			auto values = DecodeStringList(variables[property.index]);
+			for (size_t listIndex = 0; listIndex < values.size(); ++listIndex)
+			{
+				CarProperty valveProperty = property;
+				valveProperty.elementIndex = static_cast<uint32_t>(listIndex);
+				valveProperty.displayname = BuildValveDisplayName(property, listIndex);
+				valveProperty.recommendedValue = ResolveValveRecommendedValue(property);
+				expandedProperties.push_back(std::move(valveProperty));
+			}
+
+			property.index = UINT_MAX;
+		}
 	}
 
 	carproperties.insert(carproperties.end(), expandedProperties.begin(), expandedProperties.end());
@@ -342,6 +474,8 @@ bool CloseEditbox(HWND hwnd, HWND hOutput, bool bIgnoreContent = FALSE)
 bool GetStateLabelSpecs(const CarProperty *cProp, std::wstring &sLabel, COLORREF &tColor)
 {
 	if (cProp == nullptr)
+		return FALSE;
+	if (cProp->index == UINT_MAX)
 		return FALSE;
 
 	sLabel = L" ";
@@ -457,6 +591,25 @@ bool GetStateLabelSpecs(const CarProperty *cProp, std::wstring &sLabel, COLORREF
 		}
 		break;
 	}
+	case EntryValue::String:
+	{
+		if (cProp->elementIndex != UINT_MAX && variables[cProp->index].header.GetContainerType() == EntryContainer::List)
+		{
+			auto values = DecodeStringList(variables[cProp->index]);
+			if (cProp->elementIndex < values.size())
+			{
+				float valveValue = std::numeric_limits<float>::quiet_NaN();
+				if (ParseValveValue(values[cProp->elementIndex], valveValue))
+				{
+					const float recommended = ResolveValveRecommendedValue(*cProp);
+					bActionAvailable = std::fabs(valveValue - recommended) > kindasmall;
+					sLabel += bActionAvailable ? STR_BAD : STR_GOOD;
+					tColor = bActionAvailable ? CLR_BAD : CLR_GOOD;
+				}
+			}
+		}
+		break;
+	}
 	}
 
 	sLabel += L" ";
@@ -469,13 +622,16 @@ void UpdateRow(HWND hwnd, uint32_t pIndex, int nRow, std::wstring str = L"")
 	std::string binValue = "";
 	auto dataType = variables[carproperties[pIndex].index].header.GetValueType();
 	bool bHasRecommended = !carproperties[pIndex].recommendedBin.empty();
+	const bool bIsValveListElement = carproperties[pIndex].elementIndex != UINT_MAX
+		&& variables[carproperties[pIndex].index].header.GetContainerType() == EntryContainer::List
+		&& variables[carproperties[pIndex].index].header.GetValueType() == EntryValue::String;
 
 	// If the change didn't come from the edit box, but from the fix button, str is empty
 	// Order of consideration: recommended > optimum
 	if (str.empty())
 	{
 		binValue = bHasRecommended ? carproperties[pIndex].recommendedBin : carproperties[pIndex].optimumBin;
-		sValue = Variable::ValueBinToStr(binValue, dataType);
+		sValue = bIsValveListElement ? std::to_wstring(ResolveValveRecommendedValue(carproperties[pIndex])) : Variable::ValueBinToStr(binValue, dataType);
 	}
 
 	// If we don't have a recommended value, and we have a range defined, we clamp
@@ -489,7 +645,23 @@ void UpdateRow(HWND hwnd, uint32_t pIndex, int nRow, std::wstring str = L"")
 		sValue = std::to_wstring(fValue);
 	}
 	//TruncFloatStr(sValue);
-	UpdateValue(sValue, carproperties[pIndex].index, binValue);
+	if (bIsValveListElement)
+	{
+		auto values = DecodeStringList(variables[carproperties[pIndex].index]);
+		if (carproperties[pIndex].elementIndex < values.size())
+		{
+			if (sValue.empty())
+				sValue = values[carproperties[pIndex].elementIndex];
+
+			values[carproperties[pIndex].elementIndex] = sValue;
+			binValue = EncodeStringList(values);
+			UpdateValue(L"", carproperties[pIndex].index, binValue);
+		}
+	}
+	else
+	{
+		UpdateValue(sValue, carproperties[pIndex].index, binValue);
+	}
 
 	// Update state label
 	HWND hLabel = GetDlgItem(hwnd, ID_PL_STATE + nRow);
@@ -1247,7 +1419,7 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 				// Alloc memory on heap to store state's color and default window process
 				AllocWindowUserData(hDisplayState, (LONG_PTR)PropertyListControlProc, 0, tColor);
 
-				value = variables[carproperties[i].index].GetDisplayString();
+				value = carproperties[i].elementIndex == UINT_MAX ? variables[carproperties[i].index].GetDisplayString() : GetValveDisplayValue(carproperties[i]);
 				HWND hDisplayValue = CreateWindowEx(0, WC_STATIC, value.c_str(), SS_SIMPLE | WS_CHILD | WS_VISIBLE, 325, 0 + offset, 100, yChar + 1, hProperties, (HMENU)IntToPtr(ID_PL_EDIT + RowID), hInst, NULL);
 				SendMessage(hDisplayValue, WM_SETFONT, (WPARAM)hListFont, TRUE);
 

@@ -3,6 +3,12 @@
 #include <string> 
 #include <tchar.h> 
 #include <algorithm> 
+#include <limits>
+
+constexpr uint32_t MaintenanceDataType_Float = 2;
+constexpr uint32_t MaintenanceDataType_Int = 6;
+constexpr uint32_t MaintenanceDataType_Vector = 7;
+constexpr uint32_t MaintenanceDataType_StringList = 8;
 
 struct QTRN
 {
@@ -79,14 +85,16 @@ struct CarProperty
 	std::string recommendedBin;
 	uint32_t datatype;
 	uint32_t index;
+	float recommendedValue = std::numeric_limits<float>::quiet_NaN();
+	uint32_t elementIndex = UINT_MAX;
 
 	CarProperty() 
 	{
 	
 	}
 
-	CarProperty(std::wstring displayname_, std::wstring lookupname_, uint32_t datatype_, std::string worst_, std::string optimum_, std::string recommended_ = "", uint32_t index_ = UINT_MAX)
-		: displayname(std::move(displayname_)), lookupname(std::move(lookupname_)), datatype(std::move(datatype_)), worstBin(std::move(worst_)), optimumBin(std::move(optimum_)), recommendedBin(std::move(recommended_)), index(std::move(index_))
+	CarProperty(std::wstring displayname_, std::wstring lookupname_, uint32_t datatype_, std::string worst_, std::string optimum_, std::string recommended_ = "", uint32_t index_ = UINT_MAX, float recommendedValue_ = std::numeric_limits<float>::quiet_NaN(), uint32_t elementIndex_ = UINT_MAX)
+		: displayname(std::move(displayname_)), lookupname(std::move(lookupname_)), datatype(std::move(datatype_)), worstBin(std::move(worst_)), optimumBin(std::move(optimum_)), recommendedBin(std::move(recommended_)), index(std::move(index_)), recommendedValue(std::move(recommendedValue_)), elementIndex(std::move(elementIndex_))
 	{
 
 	}
