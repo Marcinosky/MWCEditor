@@ -37,7 +37,6 @@ namespace
 constexpr size_t MinAidDigits = 1;
 constexpr size_t MaxAidDigits = 2;
 constexpr bool ValveListAlternatingLayout = false;
-constexpr float ValveRecommendedDefault = 5.0f;
 constexpr size_t ValveDigitsMin = 1;
 constexpr size_t ValveDigitsMax = 2;
 
@@ -153,7 +152,7 @@ std::wstring BuildValveDisplayName(const CarProperty& baseProperty, size_t listI
 
 float ResolveValveRecommendedValue(const CarProperty& property)
 {
-	return std::isnan(property.recommendedValue) ? ValveRecommendedDefault : property.recommendedValue;
+	return property.recommendedValue;
 }
 
 std::wstring GetValveDisplayValue(const CarProperty& property)
@@ -441,7 +440,16 @@ void ResolveMaintenanceProperties(const VariableLookupMap& variableLookup, size_
 				CarProperty valveProperty = property;
 				valveProperty.elementIndex = static_cast<uint32_t>(listIndex);
 				valveProperty.displayname = BuildValveDisplayName(property, listIndex);
-				valveProperty.recommendedValue = ResolveValveRecommendedValue(property);
+
+				if (!std::isnan(property.recommendedValue))
+					valveProperty.recommendedValue = property.recommendedValue;
+				else
+				{
+					float parsedValue = std::numeric_limits<float>::quiet_NaN();
+					if (ParseValveValue(values[listIndex], parsedValue))
+						valveProperty.recommendedValue = parsedValue;
+				}
+
 				expandedProperties.push_back(std::move(valveProperty));
 			}
 
@@ -685,7 +693,22 @@ void UpdateRow(HWND hwnd, uint32_t pIndex, int nRow, std::wstring str = L"")
 	if (str.empty())
 	{
 		binValue = bHasRecommended ? carproperties[pIndex].recommendedBin : carproperties[pIndex].optimumBin;
-		sValue = bIsValveListElement ? std::to_wstring(ResolveValveRecommendedValue(carproperties[pIndex])) : Variable::ValueBinToStr(binValue, dataType);
+		if (bIsValveListElement)
+		{
+			const float recommended = ResolveValveRecommendedValue(carproperties[pIndex]);
+			if (!std::isnan(recommended))
+			{
+				sValue = *TruncFloatStr(std::to_wstring(recommended));
+			}
+			else
+			{
+				sValue = GetValveDisplayValue(carproperties[pIndex]);
+			}
+		}
+		else
+		{
+			sValue = Variable::ValueBinToStr(binValue, dataType);
+		}
 	}
 
 	// If we don't have a recommended value, and we have a range defined, we clamp
