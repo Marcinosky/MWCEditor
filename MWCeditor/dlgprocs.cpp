@@ -74,6 +74,95 @@ bool ParseValveValue(const std::wstring& text, float& outValue)
 	return endPtr != trimmed.c_str();
 }
 
+std::wstring ToLower(std::wstring value)
+{
+	for (auto& ch : value)
+		ch = static_cast<wchar_t>(::towlower(ch));
+	return value;
+}
+
+bool IsWearIdentifier(const std::wstring& identifier)
+{
+	const std::wstring lowered = ToLower(identifier);
+	return lowered == L"wea" || lowered == STR_WEAR;
+}
+
+std::vector<std::wstring> CollectWearIdentifiers()
+{
+	std::vector<std::wstring> identifiers;
+	for (const auto& identifier : partIdentifiers)
+	{
+		if (IsWearIdentifier(identifier))
+			identifiers.push_back(identifier);
+	}
+
+	if (identifiers.empty())
+	{
+		identifiers.push_back(L"wea");
+		identifiers.push_back(STR_WEAR);
+	}
+
+	return identifiers;
+}
+
+bool TryStripWearIdentifierSuffix(const std::wstring& key, const std::vector<std::wstring>& wearIdentifiers, std::wstring& outBase)
+{
+	for (const auto& identifier : wearIdentifiers)
+	{
+		if (identifier.empty() || key.size() <= identifier.size())
+			continue;
+
+		if (key.compare(key.size() - identifier.size(), identifier.size(), identifier) != 0)
+			continue;
+
+		outBase = key.substr(0, key.size() - identifier.size());
+		return true;
+	}
+
+	return false;
+}
+
+bool HasWearIdentifierSuffix(const std::wstring& key, const std::vector<std::wstring>& wearIdentifiers)
+{
+	for (const auto& identifier : wearIdentifiers)
+	{
+		if (identifier.empty() || key.size() <= identifier.size())
+			continue;
+
+		if (key.compare(key.size() - identifier.size(), identifier.size(), identifier) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+bool IsWearEntryKey(const std::wstring& key, const std::vector<std::wstring>& wearIdentifiers)
+{
+	if (HasWearIdentifierSuffix(key, wearIdentifiers))
+		return true;
+
+	return key.find(STR_WEAR) != std::wstring::npos;
+}
+
+std::wstring BuildWearDisplayName(const std::wstring& key, const std::vector<std::wstring>& wearIdentifiers)
+{
+	std::wstring baseName = key;
+	if (!TryStripWearIdentifierSuffix(key, wearIdentifiers, baseName))
+	{
+		std::size_t pos = key.find(STR_WEAR);
+		if (pos != std::wstring::npos)
+		{
+			baseName = key;
+			baseName.replace(pos, std::char_traits<wchar_t>::length(STR_WEAR), L"");
+		}
+	}
+
+	std::wstring displayName = baseName + L" " + STR_STATE;
+	if (!displayName.empty())
+		displayName[0] = static_cast<wchar_t>(::towupper(displayName[0]));
+	return displayName;
+}
+
 std::wstring FormatValveValueForDisplay(const std::wstring& raw)
 {
 	float value = 0.0f;
@@ -1457,6 +1546,8 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 		VariableLookupMap variableLookup = BuildVariableLookupMap();
 		ResolveMaintenanceProperties(variableLookup, maintenanceBaseSize);
 
+		const auto wearIdentifiers = CollectWearIdentifiers();
+
 		std::unordered_set<std::wstring> maintenanceLookupNames;
 		maintenanceLookupNames.reserve(carproperties.size());
 		for (const auto& property : carproperties)
@@ -1468,7 +1559,7 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 		for (uint32_t i = 0; i < variables.size(); i++)
 		{
 			const Variable& variable = variables[i];
-			bool isWearEntry = ContainsStr(variable.key, STR_WEAR) && (variable.header.IsNonContainerOfValueType(EntryValue::Float) || variable.header.IsNonContainerOfValueType(EntryValue::Vector3));
+			bool isWearEntry = IsWearEntryKey(variable.key, wearIdentifiers) && (variable.header.IsNonContainerOfValueType(EntryValue::Float) || variable.header.IsNonContainerOfValueType(EntryValue::Vector3));
 			if (!isWearEntry)
 				continue;
 
@@ -1478,19 +1569,11 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 			if (!IsMaintenanceVariableRelevant(variable.key, variable.key, variableLookup))
 				continue;
 
-			std::wstring displayname = variable.key;
-			std::size_t pos1 = variable.key.find(STR_WEAR);
-			if (pos1 != std::wstring::npos)
-			{
-				displayname.replace(pos1, 4, L"");
-				displayname += L" ";
-				displayname += STR_STATE;
-				std::transform(displayname.begin(), displayname.begin() + 1, displayname.begin(), ::toupper);
-				CarProperty cp = CarProperty(displayname, variable.key, EntryValue::Float, FloatToBin(0.f), FloatToBin(98.f));
-				cp.index = i;
-				carproperties.push_back(cp);
-				maintenanceLookupNames.insert(variable.key);
-			}
+			std::wstring displayname = BuildWearDisplayName(variable.key, wearIdentifiers);
+			CarProperty cp = CarProperty(displayname, variable.key, EntryValue::Float, FloatToBin(0.f), FloatToBin(98.f));
+			cp.index = i;
+			carproperties.push_back(cp);
+			maintenanceLookupNames.insert(variable.key);
 		}
 
 		TEXTMETRIC tm;
