@@ -890,12 +890,12 @@ INT_PTR CALLBACK HelpProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lPa
 
 INT_PTR CALLBACK TimeWeatherProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lParam)
 {
-	static const std::vector<std::wstring> weathertypes = { L"Clear Sky", L"Overcast", L"Rainy", L"Thunderstorm" };
+	static const std::vector<std::wstring> weathertypes = { L"Clear Sky", L"Overcast", L"Snowy(?)", L"Blizzard(??)" };
 	static const std::wstring worldtime =		L"worldtime";
 	static const std::wstring worldday =		L"worldday";
-	static const std::wstring weathercloud =	L"weathercloudid";
-	static const std::wstring weatherpos =		L"weatherpos";
-	static const std::wstring weathertype =		L"weathertype";
+	static const std::wstring weathercloud =	L"weather1cloudid";
+	static const std::wstring weatherpos =		L"weather1pos";
+	static const std::wstring weathertype =		L"weather1type";
 	static const int cloudtypes[] = { 4, 1, 2 };
 
 	switch (Message)
