@@ -144,6 +144,43 @@ bool IsWearEntryKey(const std::wstring& key, const std::vector<std::wstring>& we
 	return key.find(STR_WEAR) != std::wstring::npos;
 }
 
+bool TryGetAidKeyFromVariableKey(const std::wstring& key, std::wstring& outAidKey)
+{
+	size_t digitStart = std::wstring::npos;
+	size_t digitEnd = std::wstring::npos;
+
+	for (size_t i = 0; i < key.size(); i++)
+	{
+		if (iswdigit(key[i]))
+		{
+			digitStart = i;
+			for (digitEnd = i; digitEnd < key.size() && iswdigit(key[digitEnd]); digitEnd++);
+			i = digitEnd;
+		}
+	}
+
+	if (digitStart == std::wstring::npos || digitEnd == std::wstring::npos)
+		return false;
+
+	const size_t digitCount = digitEnd - digitStart;
+	if (digitCount < MinAidDigits || digitCount > MaxAidDigits)
+		return false;
+
+	const std::wstring digits = key.substr(digitStart, digitEnd - digitStart);
+	const std::wstring prefix = key.substr(0, digitStart);
+	outAidKey = prefix + digits + L"aid";
+	return true;
+}
+
+bool IsWearVariableInstalled(const std::wstring& key, const VariableLookupMap& variableLookup)
+{
+	std::wstring aidKey;
+	if (!TryGetAidKeyFromVariableKey(key, aidKey))
+		return true;
+
+	return IsPartInstalledByAidKey(aidKey, variableLookup);
+}
+
 std::wstring BuildWearDisplayName(const std::wstring& key, const std::vector<std::wstring>& wearIdentifiers)
 {
 	std::wstring baseName = key;
@@ -157,7 +194,18 @@ std::wstring BuildWearDisplayName(const std::wstring& key, const std::vector<std
 		}
 	}
 
-	std::wstring displayName = baseName + L" " + STR_STATE;
+	const auto resolvePartDisplayName = [&](const std::wstring& partKey) -> std::wstring
+	{
+		for (const auto& part : carparts)
+		{
+			if (StartsWithStr(part.name, partKey))
+				return part.displayName.empty() ? part.name : part.displayName;
+		}
+		return partKey;
+	};
+
+	const std::wstring resolvedBaseName = resolvePartDisplayName(baseName);
+	std::wstring displayName = resolvedBaseName + L" " + STR_STATE;
 	if (!displayName.empty())
 		displayName[0] = static_cast<wchar_t>(::towupper(displayName[0]));
 	return displayName;
@@ -1567,6 +1615,9 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 				continue;
 
 			if (!IsMaintenanceVariableRelevant(variable.key, variable.key, variableLookup))
+				continue;
+
+			if (!IsWearVariableInstalled(variable.key, variableLookup))
 				continue;
 
 			std::wstring displayname = BuildWearDisplayName(variable.key, wearIdentifiers);
