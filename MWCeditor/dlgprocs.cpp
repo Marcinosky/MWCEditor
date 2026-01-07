@@ -63,6 +63,8 @@ std::wstring TrimWhitespace(const std::wstring& in)
 	return out;
 }
 
+bool IsPartInstalledByAidKey(const std::wstring& aidKey, const VariableLookupMap& variableLookup);
+
 bool ParseValveValue(const std::wstring& text, float& outValue)
 {
 	auto trimmed = TrimWhitespace(text);
