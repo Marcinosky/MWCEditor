@@ -1972,6 +1972,20 @@ static bool AllowsMissingAidIdentifier(const std::wstring& partName)
 	return false;
 }
 
+static bool HasIdentifierSuffix(const std::wstring& key)
+{
+	for (const auto& identifier : partIdentifiers)
+	{
+		if (identifier.empty() || key.size() <= identifier.size())
+			continue;
+
+		if (key.compare(key.size() - identifier.size(), identifier.size(), identifier) == 0)
+			return true;
+	}
+
+	return false;
+}
+
 using CarPartIdentifierBuckets = std::vector<std::vector<uint32_t>>;
 using CarPartResolverMap = std::map<std::wstring, CarPartIdentifierBuckets>;
 
@@ -2020,7 +2034,7 @@ void PopulateCarparts()
 	std::map<std::wstring, std::set<std::wstring>> optionalBases;
 	for (const auto& variable : variables)
 	{
-		if (AllowsMissingAidIdentifier(variable.key))
+		if (AllowsMissingAidIdentifier(variable.key) && !HasIdentifierSuffix(variable.key))
 		{
 			const std::wstring canonicalKey = NormalizePartBase(variable.key);
 			auto& buckets = carpartIndexMap[canonicalKey];
@@ -2096,7 +2110,7 @@ void PopulateCarparts()
 			if (buckets.size() > 4)
 				part.iCorner = GetIndexForBase(buckets[4], partIdentifiers[4], base);
 
-			if (part.iInstalled == UINT_MAX && AllowsMissingAidIdentifier(part.name))
+			if (part.iInstalled == UINT_MAX && AllowsMissingAidIdentifier(part.name) && !HasIdentifierSuffix(part.name))
 			{
 				const int baseIndex = FindVariable(part.name);
 				if (baseIndex >= 0)

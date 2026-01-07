@@ -121,6 +121,8 @@ extern const std::wstring IniFile;
 
 extern const std::wstring ErrorTitle;
 
+extern const std::wstring WarningTitle;
+
 extern const std::wstring settings[];
 
 extern const std::wstring GLOB_STRS[];

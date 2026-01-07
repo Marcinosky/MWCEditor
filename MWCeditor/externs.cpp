@@ -45,6 +45,7 @@ const std::wstring bools[2] = { L"false", L"true" };
 const std::wstring Title = L"MWCEditor " + Version;
 const std::wstring IniFile = L"mwce.ini";
 const std::wstring ErrorTitle = L"Perkele!";
+const std::wstring WarningTitle = L"Varoitus!";
 const std::wstring HtmlHeader = L"<!DOCTYPE html>\n<html>\n<head>\n<style>\n#q{\nfont-family:\"Consolas\";\nborder-collapse:collapse;\ntransform:translateX(15px);\n}\n#q td, #q th{\nborder: 2px solid #fff;\npadding: 1px 10px;\n}\n#q tr:nth-child(even){background-color:#f2f2f2;}\n#q tr:nth-child(odd){background-color:#e0e0e0;}\n#q tr:hover{background-color:#fff;}\n#q th{\npadding-top:12px;\npadding-bottom:12px;\ntext-align:left;\nbackground-color:#fc4979;\ncolor:white;\n}\n</style>\n</head>\n<body style=\"background-color:#262633;\">\n";
 const std::wstring HtmlTableHeader = L"<h1 style=\"color:#fff\">%s</h1>\n<table id = \"q\">\n<tr>\n<th>Variable Name</th>\n<th>Value Current File</th>\n<th>Value Other File</th>\n</tr>\n";
 const std::wstring HtmlTableEntry = L"<tr>\n<td>%s</td>\n<td>%s</td>\n<td>%s</td>\n</tr>\n";
@@ -121,7 +122,8 @@ const std::wstring GLOB_STRS[] =
 	L"Flagged %d consumed items for deletion.\nFixed up %d item identifiers.\nEdited %d entries in total.\n(Gray entries will be removed upon saving)", // 64
 	L"Identifier variable for item \"%s\" could not be found!\nPlease report this issue.", // 65
 	L"Installed wiring for %d parts.\nYou can review the changes on the main dialog.\n\n%s", // 66
-	L"Could not install wiring because it requires \"%s\" to be installed." // 66
+	L"Could not install wiring because it requires \"%s\" to be installed.", // 67
+	L"This will install ALL wires, even those\nthat are not connected to anything.\n\nAutomatic detection is coming in a future update,\nfor now i recommend modifying the wiring object manually.\n\nDo you want to continue anyways?" // 68
 };
 
 const std::wstring BListSymbols[] =

@@ -1190,6 +1190,8 @@ INT_PTR ReportBoltsProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lPara
 			// Install wiring
 			if (!carparts.empty())
 			{
+				if (MessageBox(hwnd, GLOB_STRS[68].c_str(), WarningTitle.c_str(), MB_ICONWARNING | MB_YESNO) != IDYES)
+					break;
 				BatchProcessWiring();
 				//BatchProcessUninstall();
 				UpdateBDialog(hwnd);
