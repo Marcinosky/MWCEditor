@@ -401,9 +401,28 @@ bool IsAidInstalled(const Variable& variable)
 	return GetAidValue(variable.value) >= 1;
 }
 
+static bool HasAidIdentifierKey(const CarPart& part)
+{
+	if (part.iInstalled == UINT_MAX || part.iInstalled >= variables.size())
+		return FALSE;
+
+	if (partIdentifiers.size() <= 2 || partIdentifiers[2].empty())
+		return FALSE;
+
+	const auto& key = variables[part.iInstalled].key;
+	const auto& identifier = partIdentifiers[2];
+	if (key.size() < identifier.size())
+		return FALSE;
+
+	return key.compare(key.size() - identifier.size(), identifier.size(), identifier) == 0;
+}
+
 bool IsPartInstalled(const CarPart& part)
 {
 	if (part.iInstalled == UINT_MAX || part.iInstalled >= variables.size())
+		return FALSE;
+
+	if (!HasAidIdentifierKey(part))
 		return FALSE;
 
 	return IsAidInstalled(variables[part.iInstalled]);
@@ -2711,9 +2730,10 @@ void BatchProcessWiring() //2012
 	{
 		if (StartsWithStr(carparts[i].name, WiringIdentifier))
 		{
-			const bool installed = IsPartInstalled(carparts[i]);
+			const bool hasAidKey = HasAidIdentifierKey(carparts[i]);
+			const bool installed = hasAidKey && IsPartInstalled(carparts[i]);
 
-			if (carparts[i].iInstalled != UINT_MAX && !installed)
+			if (hasAidKey && !installed)
 			{
 				UpdateValue(L"1", carparts[i].iInstalled);
 				InstalledParts.push_back(i);
