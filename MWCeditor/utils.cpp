@@ -401,6 +401,14 @@ bool IsAidInstalled(const Variable& variable)
 	return GetAidValue(variable.value) >= 1;
 }
 
+bool IsPartInstalled(const CarPart& part)
+{
+	if (part.iInstalled == UINT_MAX || part.iInstalled >= variables.size())
+		return FALSE;
+
+	return IsAidInstalled(variables[part.iInstalled]);
+}
+
 int CompareStrs(const std::wstring &str1, const std::wstring &str2)
 {
 	auto max = str1.size();
@@ -1771,24 +1779,7 @@ bool SaveHasIssues(std::vector<Issue> &issues)
 {
 	for (auto& carpart : carparts)
 	{
-		uint32_t aid = 0;
-
-		if (carpart.iInstalled != UINT_MAX)
-		{
-			const std::string& v = variables[carpart.iInstalled].value;
-
-			if (!v.empty())
-			{
-				// Installed if:
-				// - MSC: "true"
-				// - MWC: binary AID >= 1 (non-empty, first byte >= 1)
-				if (v == "true")
-					aid = 1;
-				else if (v != "false")
-					aid = static_cast<unsigned char>(v[0]);
-			}
-		}
-		bool installed = aid >= 1;
+		const bool installed = IsPartInstalled(carpart);
 
 		if (
 			(!installed) ||
@@ -1970,6 +1961,17 @@ static uint32_t GetIndexForBase(const std::vector<uint32_t>& indices, const std:
 	return UINT_MAX;
 }
 
+static bool AllowsMissingAidIdentifier(const std::wstring& partName)
+{
+	static const std::vector<std::wstring> AidOptionalPrefixes = { L"wiring" };
+	for (const auto& prefix : AidOptionalPrefixes)
+	{
+		if (StartsWithStr(partName, prefix))
+			return true;
+	}
+	return false;
+}
+
 using CarPartIdentifierBuckets = std::vector<std::vector<uint32_t>>;
 using CarPartResolverMap = std::map<std::wstring, CarPartIdentifierBuckets>;
 
@@ -2015,6 +2017,18 @@ void PopulateCarparts()
 	carparts.clear();
 
 	CarPartResolverMap carpartIndexMap = ResolveCarPartIndices();
+	std::map<std::wstring, std::set<std::wstring>> optionalBases;
+	for (const auto& variable : variables)
+	{
+		if (AllowsMissingAidIdentifier(variable.key))
+		{
+			const std::wstring canonicalKey = NormalizePartBase(variable.key);
+			auto& buckets = carpartIndexMap[canonicalKey];
+			if (buckets.empty())
+				buckets.resize(partIdentifiers.size());
+			optionalBases[canonicalKey].insert(variable.key);
+		}
+	}
 
 	for (const auto& entry : carpartIndexMap)
 	{
@@ -2029,6 +2043,11 @@ void PopulateCarparts()
 			{
 				bases.insert(ExtractBaseFromKey(variables[varIndex].key, identifier));
 			}
+		}
+		if (optionalBases.find(canonicalKey) != optionalBases.end())
+		{
+			for (const auto& base : optionalBases[canonicalKey])
+				bases.insert(base);
 		}
 
 		for (const auto& base : bases)
@@ -2068,6 +2087,13 @@ void PopulateCarparts()
 			if (buckets.size() > 4)
 				part.iCorner = GetIndexForBase(buckets[4], partIdentifiers[4], base);
 
+			if (part.iInstalled == UINT_MAX && AllowsMissingAidIdentifier(part.name))
+			{
+				const int baseIndex = FindVariable(part.name);
+				if (baseIndex >= 0)
+					part.iInstalled = static_cast<uint32_t>(baseIndex);
+			}
+
 			carparts.push_back(part);
 		}
 	}
@@ -2080,19 +2106,7 @@ void PopulateBList(HWND hwnd, const CarPart *part, uint32_t &item, Overview *ov)
 	std::wstring stuckStr = BListSymbols[0];
 	std::wstring boltStr = BListSymbols[0];
 	LVITEM lvi;
-	uint32_t aid = 0;
-	if (part->iInstalled != UINT_MAX)
-	{
-		const std::string& installedVal = variables[part->iInstalled].value;
-		if (!installedVal.empty())
-		{
-			if (installedVal == "true")
-				aid = 1;
-			else if (installedVal != "false")
-				aid = static_cast<unsigned char>(installedVal[0]);
-		}
-	}
-	bool installed = aid >= 1;
+	const bool installed = IsPartInstalled(*part);
 
 	if (part->iBolts != UINT_MAX && part->iTightness != UINT_MAX)
 	{
@@ -2619,19 +2633,8 @@ void BatchProcessDamage(bool all)
 	{
 		if (carparts[i].iDamaged != UINT_MAX)
 		{
-			uint32_t aid = 0;
-			if (carparts[i].iInstalled != UINT_MAX)
-			{
-				const std::string& installedVal = variables[carparts[i].iInstalled].value;
-				if (!installedVal.empty())
-				{
-					if (installedVal == "true")
-						aid = 1;
-					else if (installedVal != "false")
-						aid = static_cast<unsigned char>(installedVal[0]);
-				}
-			}
-			if (aid >= 1 || all)
+			const bool installed = IsPartInstalled(carparts[i]);
+			if (installed || all)
 			{
 				if (PartIsDamaged(&carparts[i]))
 				{
@@ -2648,20 +2651,9 @@ void BatchProcessBolts(bool fix)
 	{
 		if (carparts[i].iTightness != UINT_MAX && carparts[i].iBolts != UINT_MAX)
 		{
-			uint32_t aid = 0;
-			if (carparts[i].iInstalled != UINT_MAX)
-			{
-				const std::string& installedVal = variables[carparts[i].iInstalled].value;
-				if (!installedVal.empty())
-				{
-					if (installedVal == "true")
-						aid = 1;
-					else if (installedVal != "false")
-						aid = static_cast<unsigned char>(installedVal[0]);
-				}
-			}
+			const bool installed = IsPartInstalled(carparts[i]);
 
-			if ((aid >= 1 && !(carparts[i].iCorner != UINT_MAX && variables[carparts[i].iCorner].value.size() == 1)) || !fix)
+			if ((installed && !(carparts[i].iCorner != UINT_MAX && variables[carparts[i].iCorner].value.size() == 1)) || !fix)
 			{
 				uint32_t bolts = 0, maxbolts = 0;
 				std::vector<uint32_t> boltlist;
@@ -2698,7 +2690,7 @@ void BatchProcessBolts(bool fix)
 	}
 }
 
-void BatchProcessWiring()
+void BatchProcessWiring() //2012
 {
 	static const std::wstring WiringIdentifier = L"wiring";
 	static const std::vector<std::wstring> WiringRequirements = { L"wiringbatteryground", L"wiringbatteryharness", L"wiringbatterystarter"};
@@ -2719,20 +2711,9 @@ void BatchProcessWiring()
 	{
 		if (StartsWithStr(carparts[i].name, WiringIdentifier))
 		{
-			uint32_t aid = 0;
-			if (carparts[i].iInstalled != UINT_MAX)
-			{
-				const std::string& installedVal = variables[carparts[i].iInstalled].value;
-				if (!installedVal.empty())
-				{
-					if (installedVal == "true")
-						aid = 1;
-					else if (installedVal != "false")
-						aid = static_cast<unsigned char>(installedVal[0]);
-				}
-			}
+			const bool installed = IsPartInstalled(carparts[i]);
 
-			if (carparts[i].iInstalled != UINT_MAX && aid == 0)
+			if (carparts[i].iInstalled != UINT_MAX && !installed)
 			{
 				UpdateValue(L"1", carparts[i].iInstalled);
 				InstalledParts.push_back(i);

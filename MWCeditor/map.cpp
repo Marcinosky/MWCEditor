@@ -1467,18 +1467,7 @@ D2D1_POINT_2F MapDialog::GetSidebarItemLocation(const SidebarListEntry* entry) c
 			UINT iInstalled = carparts[entry->m_Index].iInstalled;
 			UINT iCorner = carparts[entry->m_Index].iCorner;
 
-			bool installed = FALSE;
-			if (iInstalled != UINT_MAX)
-			{
-				const std::string& installedVal = variables[iInstalled].value;
-				if (!installedVal.empty())
-				{
-					if (installedVal == "true")
-						installed = TRUE;
-					else if (installedVal != "false")
-						installed = static_cast<unsigned char>(installedVal[0]) >= 1;
-				}
-			}
+			const bool installed = IsPartInstalled(carparts[entry->m_Index]);
 
 			if (installed)
 				bin = variables[m_SatsumaTransformIndex].value;

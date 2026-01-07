@@ -88,6 +88,7 @@ void BreakLPARAM(const LPARAM &lparam, int &i, int &j);
 VariableLookupMap BuildVariableLookupMap();
 uint32_t GetAidValue(const std::string& value);
 bool IsAidInstalled(const Variable& variable);
+bool IsPartInstalled(const CarPart& part);
 
 void OpenFileDialog(std::wstring &fpath, std::wstring &fname);
 void InitMainDialog(HWND hwnd);
