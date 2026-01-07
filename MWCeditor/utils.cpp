@@ -2035,6 +2035,15 @@ void PopulateCarparts()
 		const std::wstring& canonicalKey = entry.first;
 		const auto& buckets = entry.second;
 
+#ifdef _DEBUG
+		{
+			std::wstring msg = L"[CARPART BUCKETS] key=" + canonicalKey + L" sizes:";
+			for (size_t i = 0; i < buckets.size(); i++)
+				msg += L" [" + std::to_wstring(i) + L"]=" + std::to_wstring(buckets[i].size());
+			LOG(msg);
+		}
+#endif
+
 		std::set<std::wstring> bases;
 		for (size_t identifierIndex = 0; identifierIndex < buckets.size(); identifierIndex++)
 		{
@@ -2690,7 +2699,7 @@ void BatchProcessBolts(bool fix)
 	}
 }
 
-void BatchProcessWiring() //2012
+void BatchProcessWiring()
 {
 	static const std::wstring WiringIdentifier = L"wiring";
 	static const std::vector<std::wstring> WiringRequirements = { L"wiringbatteryground", L"wiringbatteryharness", L"wiringbatterystarter"};
