@@ -146,6 +146,20 @@ bool IsWearEntryKey(const std::wstring& key, const std::vector<std::wstring>& we
 	return key.find(STR_WEAR) != std::wstring::npos;
 }
 
+bool TryResolveWearPartKey(const std::wstring& key, const std::vector<std::wstring>& wearIdentifiers, std::wstring& outPartKey)
+{
+	if (TryStripWearIdentifierSuffix(key, wearIdentifiers, outPartKey))
+		return true;
+
+	std::size_t pos = key.find(STR_WEAR);
+	if (pos == std::wstring::npos)
+		return false;
+
+	outPartKey = key;
+	outPartKey.replace(pos, std::char_traits<wchar_t>::length(STR_WEAR), L"");
+	return true;
+}
+
 bool TryGetAidKeyFromVariableKey(const std::wstring& key, std::wstring& outAidKey)
 {
 	size_t digitStart = std::wstring::npos;
@@ -174,8 +188,23 @@ bool TryGetAidKeyFromVariableKey(const std::wstring& key, std::wstring& outAidKe
 	return true;
 }
 
-bool IsWearVariableInstalled(const std::wstring& key, const VariableLookupMap& variableLookup)
+bool IsWearVariableInstalled(const std::wstring& key, const std::vector<std::wstring>& wearIdentifiers, const VariableLookupMap& variableLookup)
 {
+	std::wstring partKey;
+	if (TryResolveWearPartKey(key, wearIdentifiers, partKey))
+	{
+		for (const auto& part : carparts)
+		{
+			if (!StartsWithStr(part.name, partKey))
+				continue;
+
+			if (part.iInstalled == UINT_MAX || part.iInstalled >= variables.size())
+				return false;
+
+			return IsAidInstalled(variables[part.iInstalled]);
+		}
+	}
+
 	std::wstring aidKey;
 	if (!TryGetAidKeyFromVariableKey(key, aidKey))
 		return true;
@@ -1619,11 +1648,11 @@ INT_PTR ReportMaintenanceProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM
 			if (!IsMaintenanceVariableRelevant(variable.key, variable.key, variableLookup))
 				continue;
 
-			if (!IsWearVariableInstalled(variable.key, variableLookup))
+			if (!IsWearVariableInstalled(variable.key, wearIdentifiers, variableLookup))
 				continue;
 
 			std::wstring displayname = BuildWearDisplayName(variable.key, wearIdentifiers);
-			CarProperty cp = CarProperty(displayname, variable.key, EntryValue::Float, FloatToBin(0.f), FloatToBin(98.f));
+			CarProperty cp = CarProperty(displayname, variable.key, EntryValue::Float, FloatToBin(0.f), FloatToBin(100.f));
 			cp.index = i;
 			carproperties.push_back(cp);
 			maintenanceLookupNames.insert(variable.key);
