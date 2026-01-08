@@ -48,9 +48,9 @@ public:
 		m_fileStream.flush();
 	}
 
-	void Log(const std::wstring &str)
+	void Log(const std::wstring& str)
 	{
-		*this << GetTime() << str;
+		*this << GetTime() << str << L"\n";
 		m_fileStream.flush();
 	}
 };
@@ -120,6 +120,8 @@ extern const std::wstring Title;
 extern const std::wstring IniFile;
 
 extern const std::wstring ErrorTitle;
+
+extern const std::wstring WarningTitle;
 
 extern const std::wstring settings[];
 

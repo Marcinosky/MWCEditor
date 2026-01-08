@@ -45,6 +45,7 @@ const std::wstring bools[2] = { L"false", L"true" };
 const std::wstring Title = L"MWCEditor " + Version;
 const std::wstring IniFile = L"mwce.ini";
 const std::wstring ErrorTitle = L"Perkele!";
+const std::wstring WarningTitle = L"Varoitus!";
 const std::wstring HtmlHeader = L"<!DOCTYPE html>\n<html>\n<head>\n<style>\n#q{\nfont-family:\"Consolas\";\nborder-collapse:collapse;\ntransform:translateX(15px);\n}\n#q td, #q th{\nborder: 2px solid #fff;\npadding: 1px 10px;\n}\n#q tr:nth-child(even){background-color:#f2f2f2;}\n#q tr:nth-child(odd){background-color:#e0e0e0;}\n#q tr:hover{background-color:#fff;}\n#q th{\npadding-top:12px;\npadding-bottom:12px;\ntext-align:left;\nbackground-color:#fc4979;\ncolor:white;\n}\n</style>\n</head>\n<body style=\"background-color:#262633;\">\n";
 const std::wstring HtmlTableHeader = L"<h1 style=\"color:#fff\">%s</h1>\n<table id = \"q\">\n<tr>\n<th>Variable Name</th>\n<th>Value Current File</th>\n<th>Value Other File</th>\n</tr>\n";
 const std::wstring HtmlTableEntry = L"<tr>\n<td>%s</td>\n<td>%s</td>\n<td>%s</td>\n</tr>\n";
@@ -98,7 +99,7 @@ const std::wstring GLOB_STRS[] =
 	L"Hey buddy! Looks like you're new.", //42
 	L"\nUnexpected EOF!", //43
 	L"You are about to open a backup file. Is this intentional?", //44
-	L"\nClick a value to modify it, then press Set to apply the change or Fix to restore a recommended value.\n\nProgrammer’s note:\nMost values shown here are taken directly from in-game data and were added quickly to make the editor usable. The suggested values are not definitive meta values, as many are inherited from the original game or are only rough references.\n\nAt this point, the actual meta tuning values still need to be discovered by players.\n\nI am also working on bringing back additional parameters that are currently missing, such as valve lash.\n\nFor best results, tune the car in-game whenever possible.\nHave fun!", //45
+	L"\nClick a value to modify it, then press Set to apply the change or Fix to restore a recommended value.\n\nProgrammer’s note:\nMost values shown here are taken directly from in-game data and were added quickly to make the editor usable. The suggested values are not definitive meta values, as many are inherited from the original game or are only rough references.\n\nAt this point, the actual meta tuning values still need to be discovered by players.\n\nSome condition values may be set to 99 or 11 on purpose\n'FIX' values are NOT whats best and are guesses for now!\n\nFor best results, tune the car in-game whenever possible.\nHave fun!", //45
 	//L"\nClick a value to modify, then press set to apply the change or press fix to set it to a recommended value.\n\n\nProgrammers Notes:\nThe values for tuning parts are just my suggestions.\nFor instance, the suggested air/fuel ratio of 14:7 is the stoichiometric mixture that provides the best balance between power and fuel economy. To further decrease fuel consumption, you could make the mixture even leaner. For maximum power, you could set it to something like 13.1. \n\nThe same applies to the spark timing on the distributor. There is no best value for this, as with a racing carburator with N2O, the timing needs to be much higher (~13) than with the twin or stock carburator (~14.8).\n\nThe final gear ratio should be between 3.7 - 4.625. Lower values provide higher top speed but less acceleration.\n\n\nI highly recommend tuning it in the game though, as this is what the game is about ;)\nHave fun!", //45
 	L"Could not complete action.\n", //46
 	L"Could not find item ID entry!\n", //47
@@ -121,7 +122,8 @@ const std::wstring GLOB_STRS[] =
 	L"Flagged %d consumed items for deletion.\nFixed up %d item identifiers.\nEdited %d entries in total.\n(Gray entries will be removed upon saving)", // 64
 	L"Identifier variable for item \"%s\" could not be found!\nPlease report this issue.", // 65
 	L"Installed wiring for %d parts.\nYou can review the changes on the main dialog.\n\n%s", // 66
-	L"Could not install wiring because it requires \"%s\" to be installed." // 66
+	L"Could not install wiring because it requires \"%s\" to be installed.", // 67
+	L"This will install ALL wires, even those\nthat are not connected to anything.\n\nAutomatic detection is coming in a future update,\nfor now i recommend modifying the wiring object manually.\n\nDo you want to continue anyways?" // 68
 };
 
 const std::wstring BListSymbols[] =
