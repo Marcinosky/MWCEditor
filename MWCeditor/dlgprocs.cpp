@@ -458,7 +458,7 @@ bool IsMaintenanceVariableRelevant(const std::wstring& key, const std::wstring& 
 		if (IsPartInstalledByAidKey(aidKey, variableLookup))
 			return TRUE;
 
-		return variableExists;
+		return FALSE;
 	}
 
 	if (variableExists)
