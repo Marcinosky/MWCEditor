@@ -1107,29 +1107,27 @@ INT_PTR CALLBACK TimeWeatherProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPA
 				item++;
 			}
 		}
-		// Time dropdown menu
+		// Time spin edit
 		{
 			const HWND hTime = GetDlgItem(hwnd, IDC_TTIME);
+			const HWND hTimeSpin = GetDlgItem(hwnd, IDC_TTIME_SPIN);
 			const int EntryIndex = FindVariable(worldtime);
 
 			if (EntryIndex < 0)
+			{
 				::EnableWindow(hTime, FALSE);
+				::EnableWindow(hTimeSpin, FALSE);
+			}
 			else
 			{
-				const int fuck = *reinterpret_cast<const int*>(variables[EntryIndex].value.data()) + 2;
-				const int worldtime = fuck > 24 ? 2 : fuck;
-				int time = 2;
-				while (time <= 24)
-				{
-					std::wstring timeStr = std::to_wstring(time);
-					SendMessage(hTime, (uint32_t)CB_ADDSTRING, 0, (LPARAM)timeStr.c_str());
+				SendMessage(hTimeSpin, UDM_SETRANGE32, 0, 23);
+				int time = 0;
+				if (variables[EntryIndex].value.size() >= sizeof(int))
+					time = *reinterpret_cast<const int*>(variables[EntryIndex].value.data());
 
-					// Set current time
-					if (std::abs((float)(worldtime - time) - kindasmall) < 1.f)
-						SendMessage(hTime, CB_SETCURSEL, (time - 2) / 2, 0);
-
-					time = time + 2;
-				}
+				time = std::max(0, std::min(time, 23));
+				SetWindowText(hTime, std::to_wstring(time).c_str());
+				SendMessage(hTimeSpin, UDM_SETPOS32, 0, time);
 			}
 		}
 		// Day dropdown menu
@@ -1179,11 +1177,12 @@ INT_PTR CALLBACK TimeWeatherProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPA
 		{
 			// Time
 			{
-				auto sel = static_cast<int32_t>(SendMessage(GetDlgItem(hwnd, IDC_TTIME), (uint32_t)CB_GETCURSEL, (WPARAM)0, (LPARAM)0));
-				if (sel != CB_ERR)
+				BOOL translated = FALSE;
+				UINT timeValue = GetDlgItemInt(hwnd, IDC_TTIME, &translated, FALSE);
+				if (translated)
 				{
-					int32_t time = (sel + 1) * 2 - 2;
-					UpdateValue(L"", FindVariable(worldtime), IntToBin(time = 0 ? 24 : time));
+					int32_t time = static_cast<int32_t>(std::min<UINT>(23, timeValue));
+					UpdateValue(L"", FindVariable(worldtime), IntToBin(time));
 				}
 			}
 			// Day
