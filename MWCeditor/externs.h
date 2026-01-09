@@ -85,6 +85,7 @@ extern std::map<std::wstring, GroupingAlias> groupingAliases;
 extern std::wstring filepath;
 extern std::wstring filename;
 extern std::wstring appfolderpath;
+extern std::wstring lastSaveDirectory;
 extern HANDLE hTempFile;
 extern SYSTEMTIME filedate;
 extern HFONT hListFont;

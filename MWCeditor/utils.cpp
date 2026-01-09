@@ -594,6 +594,113 @@ bool FileChanged()
 	return FALSE;
 }
 
+
+static bool DirectoryExists(const std::wstring &path)
+{
+	DWORD attrs = GetFileAttributesW(path.c_str());
+	return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+static bool TrySetDefaultFolder(const ComPtr<IFileOpenDialog> &dialog, const std::wstring &path)
+{
+	if (path.empty())
+		return false;
+
+	ComPtr<IShellItem> defaultFolder;
+	if (SUCCEEDED(SHCreateItemFromParsingName((PCWSTR)path.c_str(), NULL, IID_PPV_ARGS(defaultFolder.ReleaseAndGetAddressOf()))))
+	{
+		dialog->SetDefaultFolder(defaultFolder.Get());
+		return true;
+	}
+	return false;
+}
+
+#ifdef LINUX
+static std::wstring GetLinuxUserHomePath()
+{
+	wchar_t buffer[512] = { 0 };
+	DWORD len = GetEnvironmentVariableW(L"HOME", buffer, static_cast<DWORD>(std::size(buffer)));
+	if (len > 0 && len < std::size(buffer))
+		return std::wstring(buffer, len);
+
+	len = GetEnvironmentVariableW(L"USERNAME", buffer, static_cast<DWORD>(std::size(buffer)));
+	if (len == 0 || len >= std::size(buffer))
+		len = GetEnvironmentVariableW(L"USER", buffer, static_cast<DWORD>(std::size(buffer)));
+
+	if (len == 0 || len >= std::size(buffer))
+		return std::wstring();
+
+	return L"Z:\\home\\" + std::wstring(buffer, len);
+}
+
+static std::wstring GetLinuxConfigDirectory()
+{
+	std::wstring home = GetLinuxUserHomePath();
+	if (home.empty())
+		return std::wstring();
+	return home + L"\\.config\\mwceditor\\";
+}
+
+static void EnsureLinuxConfigDirectoryExists(const std::wstring &path)
+{
+	if (path.empty())
+		return;
+
+	std::wstring configRoot = path;
+	std::size_t found = configRoot.find_last_of(L"\\/");
+	if (found != std::wstring::npos)
+		configRoot.resize(found + 1);
+
+	CreateDirectoryW(configRoot.c_str(), NULL);
+	CreateDirectoryW(path.c_str(), NULL);
+}
+
+static std::wstring LoadLastSaveDirectoryFromFile()
+{
+	std::wstring configDir = GetLinuxConfigDirectory();
+	if (configDir.empty())
+		return std::wstring();
+
+	std::wstring configFile = configDir + L"last_save_dir.txt";
+	std::wifstream inf(configFile);
+	if (!inf.is_open())
+		return std::wstring();
+
+	std::wstring line;
+	std::getline(inf, line);
+	return line;
+}
+
+static void StoreLastSaveDirectoryToFile(const std::wstring &path)
+{
+	if (path.empty())
+		return;
+
+	std::wstring configDir = GetLinuxConfigDirectory();
+	if (configDir.empty())
+		return;
+
+	EnsureLinuxConfigDirectoryExists(configDir);
+	std::wstring configFile = configDir + L"last_save_dir.txt";
+	std::wofstream outf(configFile, std::wofstream::trunc);
+	if (!outf.is_open())
+		return;
+
+	outf << path;
+}
+#endif
+
+#ifdef LINUX
+static std::wstring GetLinuxDefaultSavePath()
+{
+	std::wstring home = GetLinuxUserHomePath();
+	if (home.empty())
+		return std::wstring();
+
+	return home + L"\\.steam\\steam\\steamapps\\compatdata\\4164420\\pfx\\drive_c\\users\\steamuser\\AppData\\LocalLow\\Amistech\\My Winter Car\\";
+}
+#endif
+
 void OpenFileDialog(std::wstring &fpath, std::wstring &fname)
 {
 	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -604,18 +711,36 @@ void OpenFileDialog(std::wstring &fpath, std::wstring &fname)
 		// Create the FileOpenDialog object.
 		hr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(pFileOpen.ReleaseAndGetAddressOf()));
 
-		// Try to set default folder to default savefile path
+		// Try to set default folder to last save path or default savefile path
 		if (SUCCEEDED(hr))
 		{
-			PWSTR pszFilePath;
-			if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppDataLow, NULL, NULL, &pszFilePath)))
+			bool bDefaultSet = false;
+#ifdef LINUX
+			if (lastSaveDirectory.empty())
+				lastSaveDirectory = LoadLastSaveDirectoryFromFile();
+#endif
+			if (!lastSaveDirectory.empty())
+				bDefaultSet = TrySetDefaultFolder(pFileOpen, lastSaveDirectory);
+
+#ifdef LINUX
+			if (!bDefaultSet)
 			{
-				ComPtr<IShellItem> pDefaultFolder;
-				std::wstring defaultpath = pszFilePath;
-				defaultpath += L"\\Amistech\\My Winter Car\\";
-				if (SUCCEEDED(SHCreateItemFromParsingName((PCWSTR)defaultpath.c_str(), NULL, IID_PPV_ARGS(pDefaultFolder.ReleaseAndGetAddressOf()))))
-					pFileOpen->SetDefaultFolder(pDefaultFolder.Get());
-				CoTaskMemFree(pszFilePath);
+				std::wstring linuxDefault = GetLinuxDefaultSavePath();
+				if (!linuxDefault.empty() && DirectoryExists(linuxDefault))
+					bDefaultSet = TrySetDefaultFolder(pFileOpen, linuxDefault);
+			}
+#endif
+
+			if (!bDefaultSet)
+			{
+				PWSTR pszFilePath;
+				if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppDataLow, NULL, NULL, &pszFilePath)))
+				{
+					std::wstring defaultpath = pszFilePath;
+					defaultpath += L"\\Amistech\\My Winter Car\\";
+					TrySetDefaultFolder(pFileOpen, defaultpath);
+					CoTaskMemFree(pszFilePath);
+				}
 			}
 		}
 
@@ -637,6 +762,13 @@ void OpenFileDialog(std::wstring &fpath, std::wstring &fname)
 					pItem->GetDisplayName(SIGDN_NORMALDISPLAY, &pszFileName);
 					fpath = pszFilePath;
 					fname = pszFileName;
+					std::size_t found = fpath.find_last_of(L"\\/");
+					if (found != std::wstring::npos)
+						lastSaveDirectory = fpath.substr(0, found + 1);
+#ifdef LINUX
+					if (!lastSaveDirectory.empty())
+						StoreLastSaveDirectoryToFile(lastSaveDirectory);
+#endif
 					CoTaskMemFree(pszFilePath);
 					CoTaskMemFree(pszFileName);
 				}
@@ -888,6 +1020,10 @@ void FillVector(const std::vector<std::wstring> &params, const std::wstring &ide
 				bCheckIssues = bSetting;
 			else if (params[0] == settings[7])
 				bStartWithMap = bSetting;
+#ifndef LINUX
+			else if (params[0] == settings[8])
+				lastSaveDirectory = params[1];
+#endif
 		}
 	}
 	else if (identifier == L"Grouping_Aliases")
@@ -1360,6 +1496,9 @@ bool SaveSettings(const std::wstring &savefilename)
 	setting += L'\"' + settings[6] + L"\" \"" + std::to_wstring(bCheckIssues == 1) + L"\"\n";
 #ifdef _MAP
 	setting += L'\"' + settings[7] + L"\" \"" + std::to_wstring(EditorMap != nullptr) + L"\"\n";
+#endif
+#ifndef LINUX
+	setting += L'\"' + settings[8] + L"\" \"" + lastSaveDirectory + L"\"\n";
 #endif
 	buffer.insert(start, setting);
 
