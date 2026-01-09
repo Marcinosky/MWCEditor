@@ -248,7 +248,11 @@ INT_PTR CALLBACK DlgProc(HWND hwnd, uint32_t Message, WPARAM wParam, LPARAM lPar
 				}
 				case ID_FILE_GAMESTEAM:
 				{
+#ifdef _LINUX
+					LaunchSteamGameLinux();
+#else
 					ShellExecute(NULL, NULL, L"steam://run/4164420", NULL, NULL, SW_SHOW);
+#endif
 					break;
 				}
 				case ID_FILE_GAME:

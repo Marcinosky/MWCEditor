@@ -17,6 +17,9 @@
 #include <limits>
 #include <windows.h>
 #include <cstdio>
+#ifdef _LINUX
+#include <process.h>
+#endif
 
 #ifdef _MAP
 #include "map.h"
@@ -25,6 +28,176 @@
 #undef min
 
 using Microsoft::WRL::ComPtr;
+
+namespace
+{
+	bool DirectoryExists(const std::wstring& path)
+	{
+		DWORD attrs = GetFileAttributes(path.c_str());
+		return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY);
+	}
+
+	void UpdateLastSaveDirFromPath(const std::wstring& path)
+	{
+		size_t found = path.find_last_of(L"\\/");
+		if (found != std::wstring::npos)
+			lastSaveDir = path.substr(0, found + 1);
+	}
+
+#ifdef _LINUX
+	std::wstring GetEnvValue(const wchar_t* name)
+	{
+		DWORD size = GetEnvironmentVariable(name, NULL, 0);
+		if (size == 0)
+			return L"";
+		std::wstring value(size, L'\0');
+		GetEnvironmentVariable(name, &value[0], size);
+		if (!value.empty() && value.back() == L'\0')
+			value.pop_back();
+		return value;
+	}
+
+	std::wstring NormalizeLinuxPathToWine(const std::wstring& path)
+	{
+		if (path.empty())
+			return path;
+		if (path.find(L":\\") != std::wstring::npos)
+			return path;
+		if (path[0] == L'/')
+		{
+			std::wstring winpath = L"z:";
+			for (auto ch : path)
+				winpath += ch == L'/' ? L'\\' : ch;
+			return winpath;
+		}
+		return path;
+	}
+
+	std::wstring FindCompatSaveDirFromLibraryVdf(const std::wstring& vdfPath)
+	{
+		std::wifstream inf(vdfPath, std::wifstream::in);
+		if (!inf.is_open())
+			return L"";
+
+		std::wstring line;
+		int braceDepth = 0;
+		int libraryDepth = -1;
+		int appsDepth = -1;
+		bool expectAppsBlock = false;
+		std::wstring currentPath;
+
+		while (std::getline(inf, line))
+		{
+			std::string::size_type startpos = 0, endpos = 0;
+			if (FetchDataFileParameters(line, startpos, endpos) == 0)
+			{
+				std::wstring key = line.substr(startpos, endpos - startpos);
+				std::wstring remainder = line.substr(endpos + 1);
+				std::string::size_type valueStart = 0, valueEnd = 0;
+
+				if (key == L"path")
+				{
+					if (FetchDataFileParameters(remainder, valueStart, valueEnd) == 0)
+					{
+						currentPath = remainder.substr(valueStart, valueEnd - valueStart);
+						libraryDepth = braceDepth;
+					}
+				}
+				else if (key == L"apps")
+				{
+					expectAppsBlock = true;
+				}
+				else if (appsDepth != -1 && key == L"4164420")
+				{
+					if (!currentPath.empty())
+					{
+						std::wstring basePath = NormalizeLinuxPathToWine(currentPath);
+						if (!basePath.empty())
+						{
+							while (!basePath.empty() && basePath.back() == L'\\')
+								basePath.pop_back();
+							return basePath + L"\\steamapps\\compatdata\\4164420\\pfx\\drive_c\\users\\steamuser\\AppData\\LocalLow\\Amistech\\My Winter Car\\";
+						}
+					}
+				}
+			}
+
+			for (auto ch : line)
+			{
+				if (ch == L'{')
+				{
+					++braceDepth;
+					if (expectAppsBlock)
+					{
+						appsDepth = braceDepth;
+						expectAppsBlock = false;
+					}
+				}
+				else if (ch == L'}')
+				{
+					--braceDepth;
+					if (appsDepth != -1 && braceDepth < appsDepth)
+						appsDepth = -1;
+					if (libraryDepth != -1 && braceDepth < libraryDepth)
+					{
+						libraryDepth = -1;
+						currentPath.clear();
+					}
+				}
+			}
+		}
+
+		return L"";
+	}
+
+	std::wstring GetWineCompatSaveDir()
+	{
+		std::wstring user = GetEnvValue(L"USER");
+		if (user.empty())
+			user = GetEnvValue(L"USERNAME");
+		if (user.empty())
+			user = GetEnvValue(L"LOGNAME");
+		if (user.empty())
+			return L"";
+
+		std::wstring vdfPath = L"z:\\home\\" + user + L"\\.local\\share\\Steam\\steamapps\\libraryfolders.vdf";
+		std::wstring vdfCompat = FindCompatSaveDirFromLibraryVdf(vdfPath);
+		if (!vdfCompat.empty() && DirectoryExists(vdfCompat))
+			return vdfCompat;
+
+		std::wstring defaultPath = L"z:\\home\\" + user + L"\\.steam\\steam\\steamapps\\compatdata\\4164420\\pfx\\drive_c\\users\\steamuser\\AppData\\LocalLow\\Amistech\\My Winter Car\\";
+		if (DirectoryExists(defaultPath))
+			return defaultPath;
+
+		return L"";
+	}
+#endif
+
+	std::wstring GetDefaultSaveFolder()
+	{
+		if (!lastSaveDir.empty() && DirectoryExists(lastSaveDir))
+			return lastSaveDir;
+
+		std::wstring defaultpath;
+		PWSTR pszFilePath = nullptr;
+		if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppDataLow, NULL, NULL, &pszFilePath)))
+		{
+			defaultpath = pszFilePath;
+			defaultpath += L"\\Amistech\\My Winter Car\\";
+			CoTaskMemFree(pszFilePath);
+			if (DirectoryExists(defaultpath))
+				return defaultpath;
+		}
+
+#ifdef _LINUX
+		std::wstring compatPath = GetWineCompatSaveDir();
+		if (!compatPath.empty())
+			return compatPath;
+#endif
+
+		return defaultpath;
+	}
+}
 
 void ParseCommandLine(std::wstring& str, std::vector<std::pair<std::wstring, std::wstring>>& args)
 {
@@ -111,8 +284,18 @@ void CommandLineFile(std::wstring& arg)
 		CloseHandle(hTest);
 		filename = arg.substr(found + 1);
 		filepath = arg;
+		UpdateLastSaveDirFromPath(filepath);
 		InitMainDialog(hDialog);
 	}
+}
+
+void LaunchSteamGameLinux()
+{
+#ifdef _LINUX
+	const wchar_t* launchCmd = L"steam://rungameid/4164420";
+	if (_wspawnlp(_P_NOWAIT, L"xdg-open", L"xdg-open", launchCmd, NULL) == -1)
+		LOG(L"xdg-open launch failed for steam://rungameid/4164420\n");
+#endif
 }
 
 void AppendPath(std::wstring& path, const wchar_t more[])
@@ -607,16 +790,10 @@ void OpenFileDialog(std::wstring &fpath, std::wstring &fname)
 		// Try to set default folder to default savefile path
 		if (SUCCEEDED(hr))
 		{
-			PWSTR pszFilePath;
-			if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppDataLow, NULL, NULL, &pszFilePath)))
-			{
-				ComPtr<IShellItem> pDefaultFolder;
-				std::wstring defaultpath = pszFilePath;
-				defaultpath += L"\\Amistech\\My Winter Car\\";
-				if (SUCCEEDED(SHCreateItemFromParsingName((PCWSTR)defaultpath.c_str(), NULL, IID_PPV_ARGS(pDefaultFolder.ReleaseAndGetAddressOf()))))
-					pFileOpen->SetDefaultFolder(pDefaultFolder.Get());
-				CoTaskMemFree(pszFilePath);
-			}
+			ComPtr<IShellItem> pDefaultFolder;
+			std::wstring defaultpath = GetDefaultSaveFolder();
+			if (!defaultpath.empty() && SUCCEEDED(SHCreateItemFromParsingName((PCWSTR)defaultpath.c_str(), NULL, IID_PPV_ARGS(pDefaultFolder.ReleaseAndGetAddressOf()))))
+				pFileOpen->SetDefaultFolder(pDefaultFolder.Get());
 		}
 
 		if (SUCCEEDED(hr))
@@ -637,6 +814,7 @@ void OpenFileDialog(std::wstring &fpath, std::wstring &fname)
 					pItem->GetDisplayName(SIGDN_NORMALDISPLAY, &pszFileName);
 					fpath = pszFilePath;
 					fname = pszFileName;
+					UpdateLastSaveDirFromPath(fpath);
 					CoTaskMemFree(pszFilePath);
 					CoTaskMemFree(pszFileName);
 				}
@@ -871,26 +1049,32 @@ void FillVector(const std::vector<std::wstring> &params, const std::wstring &ide
 	{
 		if (params.size() >= 2)
 		{
-			bool bSetting = ::strtol(NarrowStr(params[1]).c_str(), NULL, 10) == 1;
-			if (params[0] == settings[0])
-				bMakeBackup = bSetting;
-			else if (params[0] == settings[1])
-				bBackupChangeNotified = bSetting;
-			else if (params[0] == settings[2])
-				bFirstStartup = bSetting;
-			else if (params[0] == settings[3])
-				bAllowScale = bSetting;
-			else if (params[0] == settings[4])
-				bEulerAngles = bSetting;
-			else if (params[0] == settings[5])
-				bDisplayRawNames = bSetting;
-			else if (params[0] == settings[6])
-				bCheckIssues = bSetting;
-			else if (params[0] == settings[7])
-				bStartWithMap = bSetting;
+			if (params[0] == settings[8])
+				lastSaveDir = params[1];
+			else
+			{
+				bool bSetting = ::strtol(NarrowStr(params[1]).c_str(), NULL, 10) == 1;
+				if (params[0] == settings[0])
+					bMakeBackup = bSetting;
+				else if (params[0] == settings[1])
+					bBackupChangeNotified = bSetting;
+				else if (params[0] == settings[2])
+					bFirstStartup = bSetting;
+				else if (params[0] == settings[3])
+					bAllowScale = bSetting;
+				else if (params[0] == settings[4])
+					bEulerAngles = bSetting;
+				else if (params[0] == settings[5])
+					bDisplayRawNames = bSetting;
+				else if (params[0] == settings[6])
+					bCheckIssues = bSetting;
+				else if (params[0] == settings[7])
+					bStartWithMap = bSetting;
+			}
 		}
 	}
-	else if (identifier == L"Grouping_Aliases")
+	
+else if (identifier == L"Grouping_Aliases")
 	{
 		if (params.size() >= 2)
 		{
@@ -1351,6 +1535,12 @@ bool SaveSettings(const std::wstring &savefilename)
 
 	std::wstring setting;
 
+	std::wstring safeLastSaveDir = lastSaveDir;
+	for (auto& ch : safeLastSaveDir)
+		if (ch == L'\"')
+			ch = L"`";
+
+
 	setting += L'\"' + settings[0] + L"\" \"" + std::to_wstring(bMakeBackup == 1) + L"\"\n";
 	setting += L'\"' + settings[1] + L"\" \"" + std::to_wstring(bBackupChangeNotified == 1) + L"\"\n";
 	setting += L'\"' + settings[2] + L"\" \"" + std::to_wstring(bFirstStartup == 1) + L"\"\n";
@@ -1361,6 +1551,7 @@ bool SaveSettings(const std::wstring &savefilename)
 #ifdef _MAP
 	setting += L'\"' + settings[7] + L"\" \"" + std::to_wstring(EditorMap != nullptr) + L"\"\n";
 #endif
+	setting += L'\"' + settings[8] + L"\" \"" + safeLastSaveDir + L"\"\n";
 	buffer.insert(start, setting);
 
 	//write to disk
