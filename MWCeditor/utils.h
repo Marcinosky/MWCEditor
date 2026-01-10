@@ -78,6 +78,7 @@ template <typename I> std::string ToHexStr(I w, size_t hex_len = sizeof(I) << 1)
 void ParseCommandLine(std::wstring& str, std::vector<std::pair<std::wstring, std::wstring>>& args);
 void CommandLineConsole(std::wstring& arg);
 void CommandLineFile(std::wstring& arg);
+void LaunchSteamGameLinux();
 void AppendPath(std::wstring& path, const wchar_t more[]);
 HRESULT FindAndCreateAppFolder();
 std::wstring ReadRegistry(const HKEY root, const std::wstring key, const std::wstring name);
