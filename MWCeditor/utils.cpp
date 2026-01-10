@@ -1538,7 +1538,7 @@ bool SaveSettings(const std::wstring &savefilename)
 	std::wstring safeLastSaveDir = lastSaveDir;
 	for (auto& ch : safeLastSaveDir)
 		if (ch == L'\"')
-			ch = L"`";
+			ch = L'`';
 
 
 	setting += L'\"' + settings[0] + L"\" \"" + std::to_wstring(bMakeBackup == 1) + L"\"\n";
